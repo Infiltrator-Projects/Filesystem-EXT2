@@ -15,6 +15,7 @@ CONFIG = json.loads((ROOT / "standalone/config.json").read_text())
 REPO, NAME, PDF, ABI = (CONFIG[k] for k in ("repository", "module", "pdf", "abi"))
 PDF = Path(PDF)
 KIND = CONFIG["build_system"]
+REQUIRED_ABIS = [ABI, *CONFIG.get("required_abis", [])]
 ENGINE = CONFIG.get("backend_revision")
 SLUG = REPO.lower()
 PACKAGE = "infiltrator-" + SLUG
@@ -22,6 +23,8 @@ if (not re.fullmatch(r"Filesystem-[A-Za-z0-9]+", REPO) or
     not re.fullmatch(r"[A-Z0-9]+\.so", NAME) or
     not re.fullmatch(r"docs/[A-Za-z0-9]+\.pdf", PDF.as_posix()) or
     not re.fullmatch(r"infiltrator_filesystem_[a-z0-9_]+", ABI) or
+    any(not isinstance(symbol, str) or not re.fullmatch(r"infiltrator_filesystem_[a-z0-9_]+", symbol)
+        for symbol in REQUIRED_ABIS) or
     KIND not in ("cmake", "make") or
     (ENGINE and not re.fullmatch(r"[0-9a-f]{40}", ENGINE))):
     raise RuntimeError("Invalid filesystem build identity")
@@ -94,8 +97,10 @@ def inspect(module):
     if "DYN (Shared object file)" not in header or "Advanced Micro Devices X86-64" not in header:
         raise RuntimeError("Not an x86-64 shared object")
     symbols = subprocess.check_output(["nm", "-D", str(module)], text=True)
-    if ABI not in [row.split()[-1] for row in symbols.splitlines() if row.split()]:
-        raise RuntimeError("Missing exact filesystem ABI " + ABI)
+    exported = {row.split()[-1] for row in symbols.splitlines() if row.split()}
+    for symbol in REQUIRED_ABIS:
+        if symbol not in exported:
+            raise RuntimeError("Missing required filesystem ABI " + symbol)
     dependencies(module)
 
 def test(module, workspace=None):

@@ -39,9 +39,15 @@ target_link_libraries(ext-core PUBLIC InfiltratrCommon::Common OpenSSL::Crypto S
 # Independently build only the EXT2 variant from source owned by this repo.
 foreach(kind IN ITEMS ext2)
  string(TOUPPER "${kind}" module_name)
+ # Keep the genuine freestanding EXT2 drop-in engine alongside the
+ # separately owned EXT Test Media/Defragmenter fixture ABI in ONE EXT2.so.
+ # Test Media must not reject an otherwise installed EXT2 module.
  add_library(ext-${kind}-driver SHARED
   $<TARGET_OBJECTS:ext-core>
-  compat/legacy_services.c compat/runtime_alloc.c module/ext_module.c)
+  compat/legacy_services.c compat/runtime_alloc.c module/ext_module.c
+  native/filesystems/ext2/core/ext2_core.c
+  native/filesystems/ext2/core/ext2_engine.c
+  native/filesystems/ext2/module/ext2_module.c)
  set_target_properties(ext-${kind}-driver PROPERTIES PREFIX "" OUTPUT_NAME "${module_name}" SUFFIX ".so")
  target_compile_definitions(ext-${kind}-driver PRIVATE
   _GNU_SOURCE _FILE_OFFSET_BITS=64 IFS_EXT_FORMAT_ID="${kind}")
@@ -57,6 +63,15 @@ foreach(kind IN ITEMS ext2)
   target_include_directories(ext-${kind}-module-test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include" "${CMAKE_CURRENT_SOURCE_DIR}/compat")
   target_link_libraries(ext-${kind}-module-test PRIVATE ext-${kind}-driver)
   add_test(NAME ext-${kind}-module-contract COMMAND ext-${kind}-module-test)
+  # Prove the original EXT2 drop-in read/write interface survives the
+  # addition of the Test Media fixture and full EXT defrag interface.
+  add_executable(ext2-dropin-module-test tests/ext2_dropin_module_test.c)
+  target_include_directories(ext2-dropin-module-test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/native/filesystems/ext2/core"
+    "${CMAKE_CURRENT_SOURCE_DIR}/native/filesystems/ext2/module")
+  target_compile_options(ext2-dropin-module-test PRIVATE -Wall -Wextra -Wpedantic -Werror -UNDEBUG)
+  target_link_libraries(ext2-dropin-module-test PRIVATE ext-${kind}-driver)
+  add_test(NAME ext2-dropin-module-contract COMMAND ext2-dropin-module-test)
  endif()
  # EXT2/EXT3 are built solely for cross-format regression.
  # The EXT4 package must not overwrite separately owned EXT2/EXT3 modules.
