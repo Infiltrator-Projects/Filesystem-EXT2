@@ -2,6 +2,9 @@
   "repository": "Filesystem-EXT2",
   "module": "EXT2.so",
   "pdf": "docs/EXT2.pdf",
-  "abi": "infiltrator_filesystem_module_v1",
-  "build_system": "make"
+  "abi": "infiltrator_filesystem_ext_v1",
+  "build_system": "cmake",
+  "required_abis": [
+    "infiltrator_filesystem_module_v1"
+  ]
 }
