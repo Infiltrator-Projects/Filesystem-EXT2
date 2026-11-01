@@ -1,0 +1,60 @@
+name: Validate independent EXT2 Defragmenter module
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'CMakeLists.txt'
+      - 'compat/**'
+      - 'fixtures/**'
+      - 'include/**'
+      - 'migration/**'
+      - 'module/**'
+      - 'native/**'
+      - 'tests/**'
+      - 'docs/EXT2.pdf'
+      - '.github/workflows/independent-engine.yml'
+  pull_request:
+    paths:
+      - 'CMakeLists.txt'
+      - 'compat/**'
+      - 'fixtures/**'
+      - 'include/**'
+      - 'migration/**'
+      - 'module/**'
+      - 'native/**'
+      - 'tests/**'
+      - 'docs/EXT2.pdf'
+      - '.github/workflows/independent-engine.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ext2-standalone-engine:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install native build dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential binutils cmake libssl-dev libsqlite3-dev
+      - name: Preserve original standalone freestanding ABI tests
+        run: make test
+      - name: Compile repository-owned Defragmenter ABI and run tests
+        run: |
+          set -euo pipefail
+          cmake -S . -B build-independent -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+          cmake --build build-independent --parallel 2
+          ctest --test-dir build-independent --output-on-failure
+          test -f build-independent/EXT2.so
+          test ! -e build-independent/EXT3.so
+          test ! -e build-independent/EXT4.so
+          nm -D build-independent/EXT2.so | grep -F 'infiltrator_filesystem_ext_v1'
+      - name: Verify only EXT2.so and one PDF install
+        run: |
+          set -euo pipefail
+          stage="$(mktemp -d)"
+          trap 'rm -rf "$stage"' EXIT
+          DESTDIR="$stage" cmake --install build-independent
+          actual="$(cd "$stage" && find . -type f -printf '%P\n' | LC_ALL=C sort)"
+          expected="$(printf '%s\n' 'System/Filesystems/EXT2.so' 'System/Resources/Documentation/Filesystem-EXT2/EXT2.pdf' | LC_ALL=C sort)"
+          test "$actual" = "$expected"
+          test "$(head -c 5 "$stage/System/Resources/Documentation/Filesystem-EXT2/EXT2.pdf")" = '%PDF-'

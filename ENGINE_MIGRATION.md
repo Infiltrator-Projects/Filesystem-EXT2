@@ -1,0 +1,6 @@
+# Independent EXT2 Defragmenter engine migration
+Source ownership baseline: Filesystem-EXT4 revision `5c4e11f04a9b0f5c56aae96e622534614d3486b0`, copied into this repository without altering its native source or license headers. The new CMake build produces only `EXT2.so` exporting Defragmenter's `infiltrator_filesystem_ext_v1` interface. It does not fetch EXT3/EXT4 source; its sole source checkout dependency is the pinned, filesystem-neutral Libraries SDK.
+
+The original freestanding `infiltrator_filesystem_module_v1` engine, its Makefile, and the portable/native package release path remain intact for independent testing and backward compatibility. The current package still contains that narrower ABI. **Do not declare the released EXT2 package Defragmenter-compatible, or switch Defragmenter's module pin, until the broader ABI implementation passes integration, corpus, failure-interruption, and recovery qualification.**
+
+This repository presently contains both the original freestanding EXT2 engine and the historical relocation engine candidate. Their complete merge into one canonical EXT2 implementation (and elimination of redundant filesystem logic) remains necessary. This is not a claim of universal EXT2 support or completed migration.
