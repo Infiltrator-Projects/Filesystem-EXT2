@@ -5,7 +5,7 @@ CORE := $(BASE)/core/ext2_core.c $(BASE)/core/ext2_engine.c
 MODULE := $(BASE)/module/ext2_module.c
 INCS := -I$(BASE)/core -I$(BASE)/module
 OUT ?= build
-.PHONY: all test clean
+.PHONY: all test install clean
 all: $(OUT)/EXT2.so
 $(OUT):
 	mkdir -p "$(OUT)"
@@ -18,5 +18,11 @@ test: $(OUT)/EXT2.so $(OUT)/ext2-test
 	readelf -Ws $(OUT)/EXT2.so | grep -F infiltrator_filesystem_module_v1
 	readelf -p .ifsmeta $(OUT)/EXT2.so | grep -F 'IFS-MODULE:ext2:1'
 	! readelf -d $(OUT)/EXT2.so | grep -q '[(]NEEDED[)]'
+# Installation payload is exactly EXT2.so and one illustrated PDF.
+# DESTDIR stages an isolated package without modifying the host filesystem.
+install: $(OUT)/EXT2.so
+	@test "$(head -c 5 docs/EXT2.pdf)" = '%PDF-'
+	install -Dm0644 "$(OUT)/EXT2.so" "$(DESTDIR)/System/Filesystems/EXT2.so"
+	install -Dm0644 "docs/EXT2.pdf" "$(DESTDIR)/System/Resources/Documentation/Filesystem-EXT2/EXT2.pdf"
 clean:
 	rm -rf "$(OUT)"
