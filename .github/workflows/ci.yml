@@ -14,3 +14,15 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build standalone filesystem shared object and run regression
         run: make test
+
+      - name: Verify exact runtime payload without installing on the runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          stage="$(mktemp -d)"
+          trap 'rm -rf "$stage"' EXIT
+          make DESTDIR="$stage" install
+          expected="$(printf '%s\n' 'System/Filesystems/EXT2.so' 'System/Resources/Documentation/Filesystem-EXT2/EXT2.pdf' | LC_ALL=C sort)"
+          actual="$(cd "$stage" && find . -type f -printf '%P\n' | LC_ALL=C sort)"
+          test "$actual" = "$expected"
+          test "$(head -c 5 "$stage/System/Resources/Documentation/Filesystem-EXT2/EXT2.pdf")" = '%PDF-'
