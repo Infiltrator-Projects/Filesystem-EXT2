@@ -78,7 +78,7 @@ foreach(kind IN ITEMS ext2)
  if(kind STREQUAL "ext2")
   install(TARGETS ext-${kind}-driver LIBRARY DESTINATION /System/Filesystems)
   install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/docs/EXT2.pdf"
-          DESTINATION /System/Resources/Documentation/Filesystem-EXT2)
+          DESTINATION /System/Resources/Documentation RENAME Filesystem-EXT2.pdf)
  endif()
 endforeach()
 

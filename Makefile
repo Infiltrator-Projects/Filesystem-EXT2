@@ -29,6 +29,6 @@ test: $(OUT)/EXT2.so $(OUT)/ext2-test
 install: $(OUT)/EXT2.so
 	@test "$$(head -c 5 docs/EXT2.pdf)" = '%PDF-'
 	install -Dm0644 "$(OUT)/EXT2.so" "$(DESTDIR)/System/Filesystems/EXT2.so"
-	install -Dm0644 "docs/EXT2.pdf" "$(DESTDIR)/System/Resources/Documentation/Filesystem-EXT2/EXT2.pdf"
+	install -Dm0644 "docs/EXT2.pdf" "$(DESTDIR)/System/Resources/Documentation/Filesystem-EXT2.pdf"
 clean:
 	rm -rf "$(OUT)"
