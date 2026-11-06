@@ -1,62 +1,165 @@
-0.06 0.12 0.20 rg 0 744 595 98 re f
-0.02 0.58 0.60 rg 48 741 87 4 re f
-BT /F2 12 Tf 0.65 0.87 0.91 rg 1 0 0 1 48 801 Tm (INFILTRATOR / FILESYSTEMS) Tj ET
-BT /F2 20 Tf 1 1 1 rg 1 0 0 1 48 771 Tm (EXT2 - format and project guide) Tj ET
-0.94 0.97 0.97 rg 48 674 498 46 re f
-BT /F2 14 Tf 0.02 0.42 0.47 rg 1 0 0 1 61 699 Tm (FILESYSTEM BUILD GUIDE) Tj ET
-BT /F1 10 Tf 0.07 0.14 0.24 rg 1 0 0 1 61 683 Tm (Portable Debian package and locally compiled native installer.) Tj ET
-BT /F2 14 Tf 0.07 0.14 0.24 rg 1 0 0 1 48 642 Tm (WHAT IS IT?) Tj ET
-BT /F1 11 Tf 0.07 0.14 0.24 rg 1 0 0 1 49 615 Tm (Linux ext-family filesystem without ext3-style journaling; files use) Tj ET
-BT /F1 11 Tf 0.07 0.14 0.24 rg 1 0 0 1 49 596 Tm (inode-based metadata.) Tj ET
-BT /F2 13 Tf 0.07 0.14 0.24 rg 1 0 0 1 48 549 Tm (CONCEPTUAL ON-DISK STRUCTURE) Tj ET
-BT /F1 10 Tf 0.35 0.42 0.47 rg 1 0 0 1 48 526 Tm (Format-specific structures vary; this is not a sector map.) Tj ET
-0.06 0.44 0.49 rg 48 445 116 62 re f
-BT /F2 11 Tf 1 1 1 rg 1 0 0 1 60 478 Tm (MEDIA) Tj ET
-BT /F1 9 Tf 0.9 0.96 0.97 rg 1 0 0 1 60 459 Tm (stage 1) Tj ET
-0.09 0.52 0.56 rg 175 445 116 62 re f
-BT /F2 11 Tf 1 1 1 rg 1 0 0 1 187 478 Tm (METADATA) Tj ET
-BT /F1 9 Tf 0.9 0.96 0.97 rg 1 0 0 1 187 459 Tm (stage 2) Tj ET
-0.12 0.62 0.57 rg 302 445 116 62 re f
-BT /F2 11 Tf 1 1 1 rg 1 0 0 1 314 478 Tm (ALLOCATION) Tj ET
-BT /F1 9 Tf 0.9 0.96 0.97 rg 1 0 0 1 314 459 Tm (stage 3) Tj ET
-0.16 0.42 0.53 rg 429 445 116 62 re f
-BT /F2 11 Tf 1 1 1 rg 1 0 0 1 441 478 Tm (PAYLOAD) Tj ET
-BT /F1 9 Tf 0.9 0.96 0.97 rg 1 0 0 1 441 459 Tm (stage 4) Tj ET
-BT /F2 14 Tf 0.07 0.14 0.24 rg 1 0 0 1 48 406 Tm (SOURCE AND QUALIFICATION) Tj ET
-BT /F1 11 Tf 0.07 0.14 0.24 rg 1 0 0 1 49 381 Tm (Filesystem-EXT2 has an independent Infiltrator-Projects source repository.) Tj ET
-BT /F1 11 Tf 0.07 0.14 0.24 rg 1 0 0 1 49 362 Tm (The Debian package records the source revision and payload checksums.) Tj ET
-BT /F1 11 Tf 0.07 0.14 0.24 rg 1 0 0 1 49 343 Tm (Driver capabilities and media compatibility are described in the source) Tj ET
-BT /F1 11 Tf 0.07 0.14 0.24 rg 1 0 0 1 49 324 Tm (qualification reports.) Tj ET
-BT /F2 14 Tf 0.07 0.14 0.24 rg 1 0 0 1 48 288 Tm (TARGET INSTALLATION LAYOUT) Tj ET
-0.94 0.97 0.97 rg 48 183 498 86 re f
-BT /F1 10 Tf 0.07 0.14 0.24 rg 1 0 0 1 62 247 Tm (/System/Filesystems/EXT2.so) Tj ET
-BT /F1 10 Tf 0.07 0.14 0.24 rg 1 0 0 1 62 225 Tm (/System/Resources/Documentation/) Tj ET
-BT /F2 11 Tf 0.02 0.48 0.52 rg 1 0 0 1 62 204 Tm (EXT2.pdf) Tj ET
-BT /F1 10 Tf 0.35 0.42 0.47 rg 1 0 0 1 48 149 Tm (The installation page gives the exact packaged file paths.) Tj ET
-BT /F1 10 Tf 0.07 0.14 0.24 rg 1 0 0 1 48 101 Tm (Engineering source and qualification reports belong in GitHub.) Tj ET
-0.82 0.85 0.86 rg 48 61 500 1 re f
-BT /F1 9 Tf 0.34 0.39 0.43 rg 1 0 0 1 48 40 Tm (Filesystem-EXT2  |  Preliminary user guide  |  30 October 2026) Tj ET
-
+0.06 0.13 0.22 rg 0 750 595 92 re f
+0.03 0.53 0.58 rg 50 747 120 4 re f
+0.7 0.8 0.85 RG 0.7 w 50 50 m 545 50 l S
+BT /F2 9 Tf 0.60 0.85 0.90 rg 1 0 0 1 50 803.0 Tm (INFILTRATOR / ORIGINAL FILESYSTEM TECHNICAL REFERENCE) Tj ET
+BT /F2 19 Tf 1 1 1 rg 1 0 0 1 50 774.0 Tm (EXT2 - Second Extended Filesystem) Tj ET
+BT /F1 8 Tf 0.33 0.40 0.44 rg 1 0 0 1 50 34.0 Tm (Filesystem-EXT2 | Format history, physical design and references) Tj ET
+BT /F1 8 Tf 0.33 0.40 0.44 rg 1 0 0 1 509 34.0 Tm (PAGE 01) Tj ET
+BT /F2 12 Tf 0.02 0.50 0.56 rg 1 0 0 1 50 690.0 Tm (HISTORY / ORIGINAL DESIGN / DISK FORMAT) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 655.0 Tm (The 1993 Linux filesystem that established extensible inode, block group and bitmap) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 638.0 Tm (structures later reused by ext3 and ext4.) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 609.0 Tm (This is a technical reference to the upstream filesystem's historical design, not an) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 592.0 Tm (installer manual. The format's on-media semantics are distinct from the independent) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 575.0 Tm (InfiltratorOS module, its APIs and any Linux kernel adapter.) Tj ET
+BT /F2 12 Tf 0.02 0.50 0.56 rg 1 0 0 1 50 546.0 Tm (CONCEPTUAL MEDIA MAP) Tj ET
+0.040 0.360 0.470 rg 50 463 239 67 re f
+BT /F2 11 Tf 1 1 1 rg 1 0 0 1 61 495.0 Tm (SUPERBLOCK) Tj ET
+BT /F1 8.5 Tf 0.86 0.96 0.97 rg 1 0 0 1 61 476.0 Tm (1 KiB offset + geometry) Tj ET
+0.065 0.395 0.495 rg 301 463 239 67 re f
+BT /F2 11 Tf 1 1 1 rg 1 0 0 1 312 495.0 Tm (BLOCK GROUPS) Tj ET
+BT /F1 8.5 Tf 0.86 0.96 0.97 rg 1 0 0 1 312 476.0 Tm (Descriptors, inode/block bitmaps) Tj ET
+0.090 0.430 0.520 rg 50 381 239 67 re f
+BT /F2 11 Tf 1 1 1 rg 1 0 0 1 61 413.0 Tm (INODE TABLES) Tj ET
+BT /F1 8.5 Tf 0.86 0.96 0.97 rg 1 0 0 1 61 394.0 Tm (Metadata + block pointers) Tj ET
+0.115 0.465 0.545 rg 301 381 239 67 re f
+BT /F2 11 Tf 1 1 1 rg 1 0 0 1 312 413.0 Tm (DATA BLOCKS) Tj ET
+BT /F1 8.5 Tf 0.86 0.96 0.97 rg 1 0 0 1 312 394.0 Tm (Direct and indirect references) Tj ET
+BT /F2 12 Tf 0.02 0.50 0.56 rg 1 0 0 1 50 340.0 Tm (CONTENTS) Tj ET
+BT /F1 10.6 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 313.0 Tm (1. Historical chronology) Tj ET
+BT /F1 10.6 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 290.0 Tm (2. Original on-disk architecture) Tj ET
+BT /F1 10.6 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 267.0 Tm (3. Allocation and directories) Tj ET
+BT /F1 10.6 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 244.0 Tm (4. Integrity and recovery) Tj ET
+BT /F1 10.6 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 221.0 Tm (5. Design rationale and limits) Tj ET
+BT /F1 10.6 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 198.0 Tm (6. InfiltratorOS integration boundary) Tj ET
 %%Page
-0.06 0.12 0.20 rg 0 744 595 98 re f
-BT /F2 20 Tf 1 1 1 rg 1 0 0 1 48 778 Tm (Build and installation) Tj ET
-BT /F2 14 Tf 0.07 0.14 0.24 rg 1 0 0 1 48 700 Tm (Filesystem-EXT2) Tj ET
-BT /F1 11 Tf 0.07 0.14 0.24 rg 1 0 0 1 48 673 Tm (Release @VERSION@) Tj ET
-BT /F2 13 Tf 0.07 0.14 0.24 rg 1 0 0 1 48 620 Tm (Installed files) Tj ET
-BT /F3 8 Tf 0.07 0.14 0.24 rg 1 0 0 1 48 591 Tm (/System/Filesystems/EXT2.so) Tj ET
-BT /F3 8 Tf 0.07 0.14 0.24 rg 1 0 0 1 48 568 Tm (/System/Resources/Documentation/Filesystem-EXT2.pdf) Tj ET
-BT /F3 8 Tf 0.07 0.14 0.24 rg 1 0 0 1 48 545 Tm (/System/Kernel/Filesystems/ext2.ko) Tj ET
-BT /F2 13 Tf 0.07 0.14 0.24 rg 1 0 0 1 48 475 Tm (Debian package) Tj ET
-BT /F1 11 Tf 0.07 0.14 0.24 rg 1 0 0 1 48 450 Tm (Install the prebuilt files with dpkg -i followed by the Debian filename.) Tj ET
-BT /F2 13 Tf 0.07 0.14 0.24 rg 1 0 0 1 48 400 Tm (Manual RUN) Tj ET
-BT /F1 11 Tf 0.07 0.14 0.24 rg 1 0 0 1 48 375 Tm (Run bash followed by the native installer filename.) Tj ET
-BT /F1 11 Tf 0.07 0.14 0.24 rg 1 0 0 1 48 353 Tm (The installer compiles the shared object and generates this manual locally.) Tj ET
-BT /F1 11 Tf 0.07 0.14 0.24 rg 1 0 0 1 48 331 Tm (It also compiles the Linux adapter against the running kernel headers.) Tj ET
-BT /F1 11 Tf 0.07 0.14 0.24 rg 1 0 0 1 48 309 Tm (Use --kernel-build DIRECTORY to select another prepared kernel build.) Tj ET
-BT /F1 11 Tf 0.07 0.14 0.24 rg 1 0 0 1 48 287 Tm (The manual installer replaces all three files.) Tj ET
-BT /F2 13 Tf 0.07 0.14 0.24 rg 1 0 0 1 48 239 Tm (InfiltratorOS installation) Tj ET
-BT /F1 11 Tf 0.07 0.14 0.24 rg 1 0 0 1 48 214 Tm (The OS installer builds a missing or older shared object.) Tj ET
-BT /F1 11 Tf 0.07 0.14 0.24 rg 1 0 0 1 48 192 Tm (It verifies the manual independently and repairs it from its matching release.) Tj ET
-BT /F1 11 Tf 0.07 0.14 0.24 rg 1 0 0 1 48 170 Tm (The kernel module is stored for manual use under its single filename.) Tj ET
-BT /F1 10 Tf 0.07 0.14 0.24 rg 1 0 0 1 48 110 Tm (The package metadata records the source revision and SHA-256 checksums.) Tj ET
-BT /F1 9 Tf 0.07 0.14 0.24 rg 1 0 0 1 48 40 Tm (Filesystem-EXT2 | Build guide | @VERSION@) Tj ET
+0.06 0.13 0.22 rg 0 750 595 92 re f
+0.03 0.53 0.58 rg 50 747 120 4 re f
+0.7 0.8 0.85 RG 0.7 w 50 50 m 545 50 l S
+BT /F2 9 Tf 0.60 0.85 0.90 rg 1 0 0 1 50 803.0 Tm (INFILTRATOR / ORIGINAL FILESYSTEM TECHNICAL REFERENCE) Tj ET
+BT /F2 19 Tf 1 1 1 rg 1 0 0 1 50 774.0 Tm (EXT2 - Second Extended Filesystem) Tj ET
+BT /F1 8 Tf 0.33 0.40 0.44 rg 1 0 0 1 50 34.0 Tm (Filesystem-EXT2 | Format history, physical design and references) Tj ET
+BT /F1 8 Tf 0.33 0.40 0.44 rg 1 0 0 1 509 34.0 Tm (PAGE 02) Tj ET
+BT /F2 14 Tf 0.01 0.43 0.49 rg 1 0 0 1 50 713.0 Tm (HISTORICAL CHRONOLOGY) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 679.0 Tm (Linux initially used the Minix filesystem, whose filename and size constraints became) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 662.0 Tm (restrictive. The first extended filesystem followed, and the Second Extended Filesystem was) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 645.0 Tm (released in January 1993. Linux documentation attributes the rewrite to Remy Card, Theodore) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 628.0 Tm (Ts'o and Stephen Tweedie. Ext2 supplied a more Unix-like filesystem suited to the expanding) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 611.0 Tm (use of Linux on larger disks, with better allocation policy and metadata capabilities.) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 582.0 Tm (Ext2 became the dominant Linux disk format during the 1990s. Its design supported later) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 565.0 Tm (compatible evolution: ext3 added journalling, and ext4 added extents and modern feature) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 548.0 Tm (flags. Ext2 without journalling remained useful for certain flash media, boot areas and) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 531.0 Tm (constrained devices, but it does not inherit the safety properties of ext3 or ext4 just) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 514.0 Tm (because their format ancestry is shared.) Tj ET
+%%Page
+0.06 0.13 0.22 rg 0 750 595 92 re f
+0.03 0.53 0.58 rg 50 747 120 4 re f
+0.7 0.8 0.85 RG 0.7 w 50 50 m 545 50 l S
+BT /F2 9 Tf 0.60 0.85 0.90 rg 1 0 0 1 50 803.0 Tm (INFILTRATOR / ORIGINAL FILESYSTEM TECHNICAL REFERENCE) Tj ET
+BT /F2 19 Tf 1 1 1 rg 1 0 0 1 50 774.0 Tm (EXT2 - Second Extended Filesystem) Tj ET
+BT /F1 8 Tf 0.33 0.40 0.44 rg 1 0 0 1 50 34.0 Tm (Filesystem-EXT2 | Format history, physical design and references) Tj ET
+BT /F1 8 Tf 0.33 0.40 0.44 rg 1 0 0 1 509 34.0 Tm (PAGE 03) Tj ET
+BT /F2 14 Tf 0.01 0.43 0.49 rg 1 0 0 1 50 713.0 Tm (ORIGINAL ON-DISK ARCHITECTURE) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 679.0 Tm (The primary superblock begins 1024 bytes after the filesystem start, not always at the) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 662.0 Tm (first sector boundary. It records block counts, free counts, inode counts, block size,) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 645.0 Tm (per-group geometry, compatible/incompatible/readonly-compatible feature flags and volume) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 628.0 Tm (state. Block group descriptors locate their bitmaps and inode tables; backups of important) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 611.0 Tm (metadata are placed according to revision and sparse-super rules.) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 582.0 Tm (Each inode records file mode, ownership, timestamps, link count, size and block references.) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 565.0 Tm (Traditional ext2 block pointers use direct, single-indirect, double-indirect and) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 548.0 Tm (triple-indirect addressing, allowing progressively larger files. The inode data mapping is) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 531.0 Tm (separate from the directory that names the file. Correct interpretation requires matching) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 514.0 Tm (inode size, directory entry revision and enabled feature flags.) Tj ET
+%%Page
+0.06 0.13 0.22 rg 0 750 595 92 re f
+0.03 0.53 0.58 rg 50 747 120 4 re f
+0.7 0.8 0.85 RG 0.7 w 50 50 m 545 50 l S
+BT /F2 9 Tf 0.60 0.85 0.90 rg 1 0 0 1 50 803.0 Tm (INFILTRATOR / ORIGINAL FILESYSTEM TECHNICAL REFERENCE) Tj ET
+BT /F2 19 Tf 1 1 1 rg 1 0 0 1 50 774.0 Tm (EXT2 - Second Extended Filesystem) Tj ET
+BT /F1 8 Tf 0.33 0.40 0.44 rg 1 0 0 1 50 34.0 Tm (Filesystem-EXT2 | Format history, physical design and references) Tj ET
+BT /F1 8 Tf 0.33 0.40 0.44 rg 1 0 0 1 509 34.0 Tm (PAGE 04) Tj ET
+BT /F2 14 Tf 0.01 0.43 0.49 rg 1 0 0 1 50 713.0 Tm (ALLOCATION AND DIRECTORIES) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 679.0 Tm (Block groups are intended to keep related file data, inodes and directories close on) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 662.0 Tm (rotating media. Bitmaps represent allocated blocks and inodes, avoiding a single FAT-like) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 645.0 Tm (allocation chain. A file's inode points to data blocks or indirect blocks, and free-space) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 628.0 Tm (search uses group-local information. The physical placement strategy is a policy choice,) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 611.0 Tm (not an intrinsic guarantee of contiguity.) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 582.0 Tm (Directories store inode-number and name pairs as variable-length records that must be) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 565.0 Tm (bounded by record lengths and block sizes. Hard links are multiple directory names) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 548.0 Tm (referencing one inode; their link counts matter for recovery. Symbolic links can store) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 531.0 Tm (small targets inside an inode. Unix permission bits and file types live in inode metadata,) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 514.0 Tm (unlike simple DOS file attributes.) Tj ET
+%%Page
+0.06 0.13 0.22 rg 0 750 595 92 re f
+0.03 0.53 0.58 rg 50 747 120 4 re f
+0.7 0.8 0.85 RG 0.7 w 50 50 m 545 50 l S
+BT /F2 9 Tf 0.60 0.85 0.90 rg 1 0 0 1 50 803.0 Tm (INFILTRATOR / ORIGINAL FILESYSTEM TECHNICAL REFERENCE) Tj ET
+BT /F2 19 Tf 1 1 1 rg 1 0 0 1 50 774.0 Tm (EXT2 - Second Extended Filesystem) Tj ET
+BT /F1 8 Tf 0.33 0.40 0.44 rg 1 0 0 1 50 34.0 Tm (Filesystem-EXT2 | Format history, physical design and references) Tj ET
+BT /F1 8 Tf 0.33 0.40 0.44 rg 1 0 0 1 509 34.0 Tm (PAGE 05) Tj ET
+BT /F2 14 Tf 0.01 0.43 0.49 rg 1 0 0 1 50 713.0 Tm (INTEGRITY AND RECOVERY) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 679.0 Tm (The original ext2 format has no metadata journal. A crash during allocation or directory) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 662.0 Tm (modification can leave mismatches among bitmaps, inode pointers, link counts and directory) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 645.0 Tm (entries. The superblock records clean/dirty or error state, and e2fsck can perform a) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 628.0 Tm (structured scan of allocation, namespace and connectivity to restore consistency when) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 611.0 Tm (evidence permits.) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 582.0 Tm (Recovery cannot assume bitmap truth, because the bitmap may have been updated before a) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 565.0 Tm (related inode pointer. An offline checker cross-correlates group descriptors, metadata) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 548.0 Tm (reservations, block maps, inode ownership and directory reachability. Feature flags prevent) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 531.0 Tm (old implementations from writing to formats they do not safely understand. A copied) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 514.0 Tm (superblock alone does not establish that all file content survived.) Tj ET
+%%Page
+0.06 0.13 0.22 rg 0 750 595 92 re f
+0.03 0.53 0.58 rg 50 747 120 4 re f
+0.7 0.8 0.85 RG 0.7 w 50 50 m 545 50 l S
+BT /F2 9 Tf 0.60 0.85 0.90 rg 1 0 0 1 50 803.0 Tm (INFILTRATOR / ORIGINAL FILESYSTEM TECHNICAL REFERENCE) Tj ET
+BT /F2 19 Tf 1 1 1 rg 1 0 0 1 50 774.0 Tm (EXT2 - Second Extended Filesystem) Tj ET
+BT /F1 8 Tf 0.33 0.40 0.44 rg 1 0 0 1 50 34.0 Tm (Filesystem-EXT2 | Format history, physical design and references) Tj ET
+BT /F1 8 Tf 0.33 0.40 0.44 rg 1 0 0 1 509 34.0 Tm (PAGE 06) Tj ET
+BT /F2 14 Tf 0.01 0.43 0.49 rg 1 0 0 1 50 713.0 Tm (DESIGN RATIONALE AND LIMITS) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 679.0 Tm (Ext2's block-group locality, separate inode namespace and multi-level addressing improved) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 662.0 Tm (on floppy-oriented FAT and early Unix layouts. Its metadata remains comparatively) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 645.0 Tm (understandable and has been documented for decades. The costs are possible fragmentation,) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 628.0 Tm (indirect-block overhead for large files, and a potentially long full filesystem check after) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 611.0 Tm (an unclean shutdown.) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 582.0 Tm (The absence of journalling can reduce write amplification under some workloads but is not) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 565.0 Tm (equivalent to crash resilience. An ext2 disk may use extensions affecting directory) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 548.0 Tm (structure or inode layout; the term EXT2 is not permission to ignore the feature masks.) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 531.0 Tm (Kernel drivers, ext2 tools and modern compatibility layers should always validate block) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 514.0 Tm (arithmetic and byte-order fields before writes.) Tj ET
+%%Page
+0.06 0.13 0.22 rg 0 750 595 92 re f
+0.03 0.53 0.58 rg 50 747 120 4 re f
+0.7 0.8 0.85 RG 0.7 w 50 50 m 545 50 l S
+BT /F2 9 Tf 0.60 0.85 0.90 rg 1 0 0 1 50 803.0 Tm (INFILTRATOR / ORIGINAL FILESYSTEM TECHNICAL REFERENCE) Tj ET
+BT /F2 19 Tf 1 1 1 rg 1 0 0 1 50 774.0 Tm (EXT2 - Second Extended Filesystem) Tj ET
+BT /F1 8 Tf 0.33 0.40 0.44 rg 1 0 0 1 50 34.0 Tm (Filesystem-EXT2 | Format history, physical design and references) Tj ET
+BT /F1 8 Tf 0.33 0.40 0.44 rg 1 0 0 1 509 34.0 Tm (PAGE 07) Tj ET
+BT /F2 14 Tf 0.01 0.43 0.49 rg 1 0 0 1 50 713.0 Tm (INFILTRATOROS INTEGRATION BOUNDARY) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 679.0 Tm (EXT2.so is an independent interpretation of ext2, not the Linux kernel ext2 driver. Its) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 662.0 Tm (supported subset of writes and directory operations must be documented from tests. A native) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 645.0 Tm (ELF shared library is not automatically a boot filesystem or a Linux VFS implementation;) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 628.0 Tm (those require separate adapter and early-boot qualification.) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 599.0 Tm (Original ext2 superblocks, inodes, bitmaps and directory records are the primary objects of) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 582.0 Tm (this guide. The published `.ko` and portable `.deb` are optional compatibility products,) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 565.0 Tm (and verification of their package hashes is independent of integrity of user data on an) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 548.0 Tm (ext2 volume.) Tj ET
+%%Page
+0.06 0.13 0.22 rg 0 750 595 92 re f
+0.03 0.53 0.58 rg 50 747 120 4 re f
+0.7 0.8 0.85 RG 0.7 w 50 50 m 545 50 l S
+BT /F2 9 Tf 0.60 0.85 0.90 rg 1 0 0 1 50 803.0 Tm (INFILTRATOR / ORIGINAL FILESYSTEM TECHNICAL REFERENCE) Tj ET
+BT /F2 19 Tf 1 1 1 rg 1 0 0 1 50 774.0 Tm (EXT2 - Second Extended Filesystem) Tj ET
+BT /F1 8 Tf 0.33 0.40 0.44 rg 1 0 0 1 50 34.0 Tm (Filesystem-EXT2 | Format history, physical design and references) Tj ET
+BT /F1 8 Tf 0.33 0.40 0.44 rg 1 0 0 1 509 34.0 Tm (PAGE 08) Tj ET
+BT /F2 14 Tf 0.01 0.43 0.49 rg 1 0 0 1 50 713.0 Tm (SOURCES AND PRIMARY REFERENCES) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 679.0 Tm (The documents below are the historical and engineering reference points used for this) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 662.0 Tm (guide. Where an on-media field or feature flag is ambiguous, consult the original format) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 645.0 Tm (documentation and its version-specific implementation notes before interpreting or changing) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 628.0 Tm (media.) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 599.0 Tm (1. Linux kernel: The Second Extended Filesystem) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 570.0 Tm (https://kernel.org/doc/html/v6.6/filesystems/ext2.html) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 541.0 Tm (2. Linux kernel EXT4 overview, evolution of ext-family block groups) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 512.0 Tm (https://docs.kernel.org/filesystems/ext4/overview.html) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 483.0 Tm (The InfiltratorOS shared-object module, optional kernel adapter, native builder and) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 466.0 Tm (release-specific tests are a separate implementation. A successful document build or) Tj ET
+BT /F1 10.15 Tf 0.08 0.15 0.24 rg 1 0 0 1 50 449.0 Tm (package installation does not qualify physical writes, recovery, kernel mounting or boot.) Tj ET
