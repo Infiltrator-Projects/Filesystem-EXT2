@@ -83,7 +83,15 @@ static void ext2_dir_commit(
 	struct inode *dir = folio->mapping->host;
 
 	inode_inc_iversion(dir);
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 0, 0)
 	block_write_end(position, length, length, folio);
+
+#else
+	block_write_end(NULL, folio->mapping,
+		position, length, length, folio, NULL);
+
+#endif
 
 	if (position + length > dir->i_size) {
 		i_size_write(dir, position + length);
@@ -993,7 +1001,20 @@ static int ext2_link(
 	return result;
 }
 
-static struct dentry *ext2_mkdir(
+/*
+ * Linux 7 VFS mkdir returns a dentry or ERR_PTR; Linux 6.12 returns
+ * an integer status.  The inode/link transaction below is identical.
+ */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 0, 0)
+#define IFS_EXT2_MKDIR_TYPE struct dentry *
+#define IFS_EXT2_MKDIR_ERROR(status) ERR_PTR(status)
+#define IFS_EXT2_MKDIR_SUCCESS NULL
+#else
+#define IFS_EXT2_MKDIR_TYPE int
+#define IFS_EXT2_MKDIR_ERROR(status) (status)
+#define IFS_EXT2_MKDIR_SUCCESS 0
+#endif
+static IFS_EXT2_MKDIR_TYPE ext2_mkdir(
 	struct mnt_idmap *idmap, struct inode *dir,
 	struct dentry *dentry, umode_t mode)
 {
@@ -1002,7 +1023,7 @@ static struct dentry *ext2_mkdir(
 
 	result = dquot_initialize(dir);
 	if (result != 0)
-		return ERR_PTR(result);
+		return IFS_EXT2_MKDIR_ERROR(result);
 
 	inode_inc_link_count(dir);
 	inode = ext2_new_inode(
@@ -1026,7 +1047,7 @@ static struct dentry *ext2_mkdir(
 		goto fail_child;
 
 	d_instantiate_new(dentry, inode);
-	return NULL;
+	return IFS_EXT2_MKDIR_SUCCESS;
 
 fail_child:
 	inode_dec_link_count(inode);
@@ -1034,8 +1055,11 @@ fail_child:
 	discard_new_inode(inode);
 fail_parent_link:
 	inode_dec_link_count(dir);
-	return ERR_PTR(result);
+	return IFS_EXT2_MKDIR_ERROR(result);
 }
+#undef IFS_EXT2_MKDIR_TYPE
+#undef IFS_EXT2_MKDIR_ERROR
+#undef IFS_EXT2_MKDIR_SUCCESS
 
 static int ext2_unlink(struct inode *dir, struct dentry *dentry)
 {
