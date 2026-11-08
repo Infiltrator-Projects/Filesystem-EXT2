@@ -537,9 +537,9 @@ int ext2_fiemap(
 	struct inode *inode, struct fiemap_extent_info *fieinfo,
 	u64 start, u64 len);
 
-int ext2_fileattr_get(struct dentry *dentry, struct fileattr *fa);
+int ext2_fileattr_get(struct dentry *dentry, struct file_kattr *fa);
 int ext2_fileattr_set(
-	struct mnt_idmap *idmap, struct dentry *dentry, struct fileattr *fa);
+	struct mnt_idmap *idmap, struct dentry *dentry, struct file_kattr *fa);
 long ext2_ioctl(struct file *file, unsigned int cmd, unsigned long arg);
 long ext2_compat_ioctl(
 	struct file *file, unsigned int cmd, unsigned long arg);
