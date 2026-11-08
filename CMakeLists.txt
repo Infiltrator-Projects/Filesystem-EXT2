@@ -109,3 +109,16 @@ if(BUILD_TESTING)
  target_compile_options(ext2-cross-format-denial-test PRIVATE -Wall -Wextra -Wpedantic -Werror)
  add_test(NAME ext2-rejects-other-formats COMMAND ext2-cross-format-denial-test)
 endif()
+
+# Validate the canonical EXT2 group layout independently of Linux VFS headers.
+# This is the same core source compiled into EXT2.so and ext2.ko.
+if(BUILD_TESTING)
+ add_executable(ext2-metadata-layout-test
+  tests/test_ext2_metadata_layout.c
+  native/filesystems/ext2/core/ext2_core.c)
+ target_include_directories(ext2-metadata-layout-test PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/native/filesystems/ext2/core")
+ target_compile_options(ext2-metadata-layout-test PRIVATE
+  -Wall -Wextra -Wpedantic -Werror)
+ add_test(NAME ext2-metadata-layout COMMAND ext2-metadata-layout-test)
+endif()
