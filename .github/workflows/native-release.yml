@@ -8,9 +8,9 @@ on:
 permissions:
   contents: read
 env:
-  NATIVE_RELEASE: 0.1.0-infiltrator
+  NATIVE_RELEASE: 0.1.1
   # Exact Kernel commit with green independent EXT2 two-boot VM qualification.
-  KERNEL_SOURCE_SHA: 68499384808e3694612c082fd2616e2e6f8a8778
+  KERNEL_SOURCE_SHA: 394834ca5c7fbd3d9d9c4f5a88d95f00a6054bf1
 jobs:
   qualify:
     runs-on: ubuntu-24.04

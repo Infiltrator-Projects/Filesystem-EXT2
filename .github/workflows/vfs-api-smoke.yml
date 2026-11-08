@@ -51,8 +51,8 @@ jobs:
             -d MODULE_SIG -d DEBUG_INFO -d 9P_FS -d NET_9P \
             --set-str SYSTEM_TRUSTED_KEYS '' \
             --set-str SYSTEM_REVOCATION_KEYS ''
-          make -C "$kernel" O="$obj" KERNELRELEASE=0.1.0-infiltrator olddefconfig
-          make -C "$kernel" O="$obj" KERNELRELEASE=0.1.0-infiltrator \
+          make -C "$kernel" O="$obj" KERNELRELEASE=0.1.1 olddefconfig
+          make -C "$kernel" O="$obj" KERNELRELEASE=0.1.1 \
             -j 4 modules_prepare
           test -s "$obj/include/generated/utsrelease.h"
           grep -Fqx '# CONFIG_EXT2_FS is not set' "$obj/.config"
@@ -63,7 +63,7 @@ jobs:
           kernel="$RUNNER_TEMP/Kernel"
           obj="$RUNNER_TEMP/KernelObjects"
           adapter="$GITHUB_WORKSPACE/native/filesystems/ext2/linux"
-          make -C "$kernel" O="$obj" KERNELRELEASE=0.1.0-infiltrator \
+          make -C "$kernel" O="$obj" KERNELRELEASE=0.1.1 \
             M="$adapter" KBUILD_MODPOST_WARN=1 -j 4 modules \
             > "$RUNNER_TEMP/EXT2-Compile.log" 2>&1 || {
             tail -n 180 "$RUNNER_TEMP/EXT2-Compile.log"

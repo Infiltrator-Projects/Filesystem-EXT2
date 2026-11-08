@@ -11,7 +11,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "standalone/kernel.json"
 SPEC = json.loads(CONFIG.read_text()) if CONFIG.is_file() else None
-QUALIFIED_RELEASE = "0.1.0-infiltrator"
+QUALIFIED_RELEASE = "0.1.1"
 
 
 def prepare_source():

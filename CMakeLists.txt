@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(FilesystemEXT VERSION 1.0.8 LANGUAGES C)
+project(FilesystemEXT VERSION 1.0.9 LANGUAGES C)
 include(CTest)
 include(FetchContent)
 find_package(OpenSSL REQUIRED)
@@ -16,7 +16,7 @@ FetchContent_Declare(infiltratr_common
 FetchContent_MakeAvailable(infiltratr_common)
 # The embedded Common SDK is linked, not installed with filesystem runtime modules.
 set_property(DIRECTORY "${infiltratr_common_SOURCE_DIR}" PROPERTY EXCLUDE_FROM_ALL TRUE)
-file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/version.h" "#define LD_VERSION \"1.0.8\"\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/version.h" "#define LD_VERSION \"1.0.9\"\n")
 set(EXT_SRC "${CMAKE_CURRENT_SOURCE_DIR}/migration/defragmenter/native")
 set_source_files_properties("${EXT_SRC}/ext_worker.c" PROPERTIES
  COMPILE_DEFINITIONS "main=ifs_ext_worker_main")
