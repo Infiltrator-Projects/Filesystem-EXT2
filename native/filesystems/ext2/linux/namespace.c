@@ -83,9 +83,7 @@ static void ext2_dir_commit(
 	struct inode *dir = folio->mapping->host;
 
 	inode_inc_iversion(dir);
-	block_write_end(
-		NULL, folio->mapping,
-		position, length, length, folio, NULL);
+	block_write_end(position, length, length, folio);
 
 	if (position + length > dir->i_size) {
 		i_size_write(dir, position + length);
@@ -995,7 +993,7 @@ static int ext2_link(
 	return result;
 }
 
-static int ext2_mkdir(
+static struct dentry *ext2_mkdir(
 	struct mnt_idmap *idmap, struct inode *dir,
 	struct dentry *dentry, umode_t mode)
 {
@@ -1004,7 +1002,7 @@ static int ext2_mkdir(
 
 	result = dquot_initialize(dir);
 	if (result != 0)
-		return result;
+		return ERR_PTR(result);
 
 	inode_inc_link_count(dir);
 	inode = ext2_new_inode(
@@ -1028,7 +1026,7 @@ static int ext2_mkdir(
 		goto fail_child;
 
 	d_instantiate_new(dentry, inode);
-	return 0;
+	return NULL;
 
 fail_child:
 	inode_dec_link_count(inode);
@@ -1036,7 +1034,7 @@ fail_child:
 	discard_new_inode(inode);
 fail_parent_link:
 	inode_dec_link_count(dir);
-	return result;
+	return ERR_PTR(result);
 }
 
 static int ext2_unlink(struct inode *dir, struct dentry *dentry)
