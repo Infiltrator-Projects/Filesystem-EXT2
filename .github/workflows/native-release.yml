@@ -1,12 +1,16 @@
 name: Qualify and release portable DEB and CPU-native source RUN
 on:
   push:
-    branches: [main, feature/python-native-packaging-20261101]
+    branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
+env:
+  NATIVE_RELEASE: 0.1.0-infiltrator
+  # Exact Kernel commit with green independent EXT2 two-boot VM qualification.
+  KERNEL_SOURCE_SHA: 68499384808e3694612c082fd2616e2e6f8a8778
 jobs:
   qualify:
     runs-on: ubuntu-24.04
@@ -60,28 +64,44 @@ jobs:
         with:
           name: native-filesystem-release
           path: dist
-      - name: Prepare the pinned Linux build
+      - name: Build pinned native InfiltratorOS Kernel ABI
         shell: bash
+        timeout-minutes: 60
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends build-essential binutils cmake git pkg-config libssl-dev libsqlite3-dev dpkg-dev bc bison flex libelf-dev kmod
-          curl --fail --location --retry 5 https://codeload.github.com/gregkh/linux/tar.gz/f717995cb7dcd8998ab15516b8006aea09cfde0d -o "$RUNNER_TEMP/linux.tar.gz"
-          mkdir -p "$RUNNER_TEMP/linux"
-          tar -xzf "$RUNNER_TEMP/linux.tar.gz" -C "$RUNNER_TEMP/linux" --strip-components=1
-          kernel="$RUNNER_TEMP/linux"
-          make -C "$kernel" defconfig
-          "$kernel/scripts/config" --file "$kernel/.config" --enable MODULES --disable WERROR --disable DEBUG_INFO
-          make -C "$kernel" olddefconfig
-          make -C "$kernel" -j2 bzImage modules
-          test -s "$kernel/Module.symvers"
-          test "$(make -s -C "$kernel" kernelrelease)" = 6.12.107
+          sudo apt-get install -y --no-install-recommends build-essential binutils cmake git pkg-config libssl-dev libsqlite3-dev dpkg-dev bc bison flex libelf-dev kmod dwarves
+          kernel="$RUNNER_TEMP/Kernel"
+          objects="$RUNNER_TEMP/KernelObjects"
+          git init -q -b main "$kernel"
+          git -C "$kernel" remote add origin https://github.com/Infiltrator-Projects/Kernel.git
+          git -C "$kernel" fetch --depth 1 --no-tags origin "$KERNEL_SOURCE_SHA"
+          git -C "$kernel" checkout --detach -q FETCH_HEAD
+          test "$(git -C "$kernel" rev-parse HEAD)" = "$KERNEL_SOURCE_SHA"
+          test -s "$kernel/fs/ext2/super.c"
+          mkdir -p "$objects"
+          make -C "$kernel" O="$objects" x86_64_defconfig
+          "$kernel/scripts/config" --file "$objects/.config" \
+            -e MODULES -d MODVERSIONS -d EXT2_FS -d EXT4_USE_FOR_EXT2 \
+            -d MODULE_SIG -d DEBUG_INFO -d WERROR -d 9P_FS -d NET_9P \
+            --set-str SYSTEM_TRUSTED_KEYS '' \
+            --set-str SYSTEM_REVOCATION_KEYS ''
+          make -C "$kernel" O="$objects" KERNELRELEASE="$NATIVE_RELEASE" olddefconfig
+          grep -Fqx '# CONFIG_EXT2_FS is not set' "$objects/.config"
+          make -C "$kernel" O="$objects" KERNELRELEASE="$NATIVE_RELEASE" -j 4 bzImage modules \
+            > "$RUNNER_TEMP/Kernel-build.log" 2>&1 || {
+            tail -n 140 "$RUNNER_TEMP/Kernel-build.log"
+            exit 1
+          }
+          test -s "$objects/Module.symvers"
+          test "$(cat "$objects/include/config/kernel.release")" = "$NATIVE_RELEASE"
+          test -s "$objects/arch/x86/boot/bzImage"
       - name: Compile all three files through the manual RUN
         shell: bash
         run: |
           set -euo pipefail
-          bash dist/*.run --profile portable --kernel-build "$RUNNER_TEMP/linux" --build-only --output "$RUNNER_TEMP/manual"
-          python3 standalone/check-package.py "$RUNNER_TEMP"/manual/*.deb --profile portable --kernel-release 6.12.107
+          bash dist/*.run --profile portable --kernel-build "$RUNNER_TEMP/KernelObjects" --build-only --output "$RUNNER_TEMP/manual"
+          python3 standalone/check-package.py "$RUNNER_TEMP"/manual/*.deb --profile portable --kernel-release $NATIVE_RELEASE
           dpkg-deb -x "$RUNNER_TEMP"/manual/*.deb "$RUNNER_TEMP/manual-root"
           dpkg-deb -x dist/*.deb "$RUNNER_TEMP/portable-root"
           repository=$(python3 -c 'import sys; sys.path.insert(0,"standalone"); import build; print(build.REPO)')
@@ -89,10 +109,10 @@ jobs:
           manual=$(python3 -c 'import sys; sys.path.insert(0,"standalone"); import build; print(build.PDF.name)')
           cmp "$RUNNER_TEMP/manual-root/System/Resources/Documentation/$repository.pdf" "$RUNNER_TEMP/portable-root/System/Resources/Documentation/$repository.pdf"
           mkdir -p build/qualified
-          install -m 0644 "$RUNNER_TEMP/manual-root/System/Kernel/Filesystems/$identifier.ko" "build/qualified/$identifier-linux-6.12.107.ko"
+          install -m 0644 "$RUNNER_TEMP/manual-root/System/Kernel/Filesystems/$identifier.ko" "build/qualified/$identifier-linux-$NATIVE_RELEASE.ko"
           package=$(find dist -maxdepth 1 -name '*.deb' -print -quit)
-          python3 standalone/release.py bundle-kernel "$package" "build/qualified/$identifier-linux-6.12.107.ko" "build/qualified/$(basename "$package")"
-          python3 standalone/check-package.py build/qualified/*.deb --profile portable --kernel-release 6.12.107
+          python3 standalone/release.py bundle-kernel "$package" "build/qualified/$identifier-linux-$NATIVE_RELEASE.ko" "build/qualified/$(basename "$package")"
+          python3 standalone/check-package.py build/qualified/*.deb --profile portable --kernel-release $NATIVE_RELEASE
       - uses: actions/upload-artifact@v4
         with:
           name: qualified-kernel-package
@@ -120,8 +140,8 @@ jobs:
           set -euo pipefail
           install -m 0644 kernel-qualified/*.deb dist/
           install -m 0644 kernel-qualified/*.ko dist/
-          python3 standalone/check-package.py dist/*.deb --profile portable --kernel-release 6.12.107
-      - name: Publish immutable qualified installers
+          python3 standalone/check-package.py dist/*.deb --profile portable --kernel-release $NATIVE_RELEASE
+      - name: Publish and verify exact immutable EXT2 1.0.8 release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -130,10 +150,32 @@ jobs:
           tag="v$version"
           test "$(find dist -maxdepth 1 -type f -name '*.deb' | wc -l)" = 1
           test "$(find dist -maxdepth 1 -type f -name '*.run' | wc -l)" = 1
+          test "$(find dist -maxdepth 1 -type f -name '*.ko' | wc -l)" = 1
+          # An existing tag for another commit is a release failure, not a pass.
           if gh release view "$tag" --json tagName >/dev/null 2>&1; then
-            echo "Existing immutable release $tag retained"
-            exit 0
+            tag_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq '.object.sha')"
+            tag_type="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq '.object.type')"
+            if [[ "$tag_type" == tag ]]; then
+              tag_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$tag_sha" --jq '.object.sha')"
+            fi
+            test "$tag_sha" = "$GITHUB_SHA" || {
+              echo "REFUSING: immutable release $tag is for $tag_sha, not $GITHUB_SHA" >&2
+              exit 1
+            }
+          elif gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" >/dev/null 2>&1; then
+            echo "REFUSING: tag $tag exists but has no verified release" >&2
+            exit 1
           fi
-          gh release create "$tag" dist/*.deb dist/*.run dist/*.ko --target "$GITHUB_SHA" \
-            --title "Independent filesystem native and portable installers $version" \
-            --notes "Portable DEB contains the shared object, generated manual and Linux 6.12.107 adapter. The source-embedded RUN compiles the shared object and Linux adapter locally, generates the manual and installs all three regular files. InfiltratorOS checks and repairs its outputs independently."
+          (cd dist && sha256sum -- *.deb *.run *.ko > SHA256SUMS.txt && sha256sum -c SHA256SUMS.txt)
+          if ! gh release view "$tag" --json tagName >/dev/null 2>&1; then
+            gh release create "$tag" dist/*.deb dist/*.run dist/*.ko dist/SHA256SUMS.txt \
+              --target "$GITHUB_SHA" \
+              --title "Independent EXT2 filesystem $version" \
+              --notes "Qualified for InfiltratorOS Kernel $NATIVE_RELEASE from pinned Kernel commit $KERNEL_SOURCE_SHA. The Debian package includes EXT2.so, the PDF, and ext2.ko matching that ABI. The source-embedded RUN builds for the locally selected kernel. No live kernel or bootloader is modified."
+          fi
+          remote="$RUNNER_TEMP/EXT2-release-check"
+          mkdir -p "$remote"
+          gh release download "$tag" --dir "$remote"
+          diff -qr dist "$remote"
+          (cd "$remote" && sha256sum -c SHA256SUMS.txt)
+          echo "EXT2_RELEASE_EXACT_SOURCE_PASS $tag $GITHUB_SHA"

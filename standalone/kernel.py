@@ -13,7 +13,7 @@ import urllib.request
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "standalone/kernel.json"
 SPEC = json.loads(CONFIG.read_text()) if CONFIG.is_file() else None
-QUALIFIED_RELEASE = "6.12.107"
+QUALIFIED_RELEASE = "0.1.0-infiltrator"
 
 
 def prepare_source():
@@ -104,7 +104,8 @@ def build(destination, selected_target):
             shutil.copyfile(module_directory / SPEC["makefile"], module_directory / "Makefile")
         if SPEC.get("prepare"):
             subprocess.run(SPEC["prepare"], cwd=module_directory, check=True)
-        subprocess.run(["make", "-C", str(directory), "M=" + str(module_directory),
+        subprocess.run(["make", "-C", str(directory), "KERNELRELEASE=" + release,
+                        "M=" + str(module_directory),
                         "-j" + os.environ.get("FILESYSTEM_KERNEL_JOBS", "2"),
                         *SPEC.get("make_args", []), "modules"], check=True)
         built = module_directory / (SPEC["name"] + ".ko")
