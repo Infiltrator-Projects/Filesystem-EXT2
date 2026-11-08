@@ -16,6 +16,22 @@
 #include <linux/rbtree.h>
 #include <linux/rwsem.h>
 #include <linux/xattr.h>
+#include <linux/version.h>
+
+/*
+ * The independent filesystem supports both its retained Linux 6.12 adapter
+ * qualification and the InfiltratorOS Linux 7 kernel.  Keep the portable
+ * format engine unchanged; VFS ABI differences belong in this adapter.
+ */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 0, 0)
+typedef struct file_kattr ifs_ext2_fileattr;
+typedef const struct kiocb ifs_ext2_write_context;
+#define ifs_ext2_inode_state(inode) inode_state_read_once(inode)
+#else
+typedef struct fileattr ifs_ext2_fileattr;
+typedef struct file ifs_ext2_write_context;
+#define ifs_ext2_inode_state(inode) ((inode)->i_state)
+#endif
 
 #include "../core/ext2_core.h"
 
@@ -537,9 +553,9 @@ int ext2_fiemap(
 	struct inode *inode, struct fiemap_extent_info *fieinfo,
 	u64 start, u64 len);
 
-int ext2_fileattr_get(struct dentry *dentry, struct file_kattr *fa);
+int ext2_fileattr_get(struct dentry *dentry, ifs_ext2_fileattr *fa);
 int ext2_fileattr_set(
-	struct mnt_idmap *idmap, struct dentry *dentry, struct file_kattr *fa);
+	struct mnt_idmap *idmap, struct dentry *dentry, ifs_ext2_fileattr *fa);
 long ext2_ioctl(struct file *file, unsigned int cmd, unsigned long arg);
 long ext2_compat_ioctl(
 	struct file *file, unsigned int cmd, unsigned long arg);
