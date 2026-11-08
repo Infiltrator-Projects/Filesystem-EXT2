@@ -288,6 +288,26 @@ IfsExt2Status ifs_ext2_validate_group_descriptor(
         last - descriptor->inode_table)
         return IFS_EXT2_ERROR_CORRUPT;
 
+    /*
+     * Linux EXT2 checks that each metadata address is within its block
+     * group.  The canonical core must also reject overlapping metadata:
+     * an inode-table block can never double as either bitmap, and the two
+     * bitmaps must not alias.  This protects both userspace writers and
+     * the VFS adapter before they trust group allocation metadata.
+     */
+    {
+        const ifs_ext2_u64 table_start = descriptor->inode_table;
+        const ifs_ext2_u64 table_end = table_start +
+            superblock->inode_table_blocks_per_group - 1U;
+
+        if (descriptor->block_bitmap == descriptor->inode_bitmap ||
+            ((ifs_ext2_u64)descriptor->block_bitmap >= table_start &&
+             (ifs_ext2_u64)descriptor->block_bitmap <= table_end) ||
+            ((ifs_ext2_u64)descriptor->inode_bitmap >= table_start &&
+             (ifs_ext2_u64)descriptor->inode_bitmap <= table_end))
+            return IFS_EXT2_ERROR_CORRUPT;
+    }
+
     return IFS_EXT2_OK;
 }
 
