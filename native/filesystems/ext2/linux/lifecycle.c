@@ -1215,7 +1215,9 @@ static const struct super_operations ext2_sops = {
 	.freeze_fs = ext2_freeze,
 	.unfreeze_fs = ext2_unfreeze,
 	.statfs = ext2_statfs,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(7, 0, 0)
 	.remount_fs = ext2_remount,
+#endif
 	.show_options = ext2_show_options,
 #ifdef CONFIG_QUOTA
 	.quota_read = ext2_quota_read,
@@ -1224,27 +1226,22 @@ static const struct super_operations ext2_sops = {
 #endif
 };
 
-static int ext2_remount(struct super_block *sb, int *flags, char *data)
+
+/*
+ * Both Linux 6.12's remount_fs and Linux 7's fs_context reconfigure use
+ * the same EXT2 durability and quota transition.  Only option transport
+ * differs: never drop the filesystem's existing options on a remount.
+ */
+static int ext2_reconfigure_options(struct super_block *sb,
+			   struct ext2_mount_options *options,
+			   bool becomes_readonly)
 {
 	struct ext2_sb_info *sbi = EXT2_SB(sb);
-	struct ext2_mount_options options;
 	bool was_readonly = sb_rdonly(sb);
-	bool becomes_readonly = (*flags & SB_RDONLY) != 0;
 	int error;
 
 	sync_filesystem(sb);
-
-	spin_lock(&sbi->s_lock);
-	options.s_mount_opt = sbi->s_mount_opt;
-	options.s_resuid = sbi->s_resuid;
-	options.s_resgid = sbi->s_resgid;
-	spin_unlock(&sbi->s_lock);
-
-	error = ext2_parse_options(data, sb, &options);
-	if (error)
-		return error;
-
-	if ((options.s_mount_opt ^ sbi->s_mount_opt) & EXT2_MOUNT_DAX)
+	if ((options->s_mount_opt ^ sbi->s_mount_opt) & EXT2_MOUNT_DAX)
 		return -EBUSY;
 
 	if (!was_readonly && becomes_readonly) {
@@ -1270,9 +1267,9 @@ static int ext2_remount(struct super_block *sb, int *flags, char *data)
 	}
 
 	spin_lock(&sbi->s_lock);
-	sbi->s_mount_opt = options.s_mount_opt;
-	sbi->s_resuid = options.s_resuid;
-	sbi->s_resgid = options.s_resgid;
+	sbi->s_mount_opt = options->s_mount_opt;
+	sbi->s_resuid = options->s_resuid;
+	sbi->s_resgid = options->s_resgid;
 	spin_unlock(&sbi->s_lock);
 
 	sb->s_flags = (sb->s_flags & ~SB_POSIXACL) |
@@ -1280,7 +1277,48 @@ static int ext2_remount(struct super_block *sb, int *flags, char *data)
 	return 0;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(7, 0, 0)
+static int ext2_remount(struct super_block *sb, int *flags, char *data)
+{
+	struct ext2_sb_info *sbi = EXT2_SB(sb);
+	struct ext2_mount_options options;
+	int error;
+
+	spin_lock(&sbi->s_lock);
+	options.s_mount_opt = sbi->s_mount_opt;
+	options.s_resuid = sbi->s_resuid;
+	options.s_resgid = sbi->s_resgid;
+	spin_unlock(&sbi->s_lock);
+
+	error = ext2_parse_options(data, sb, &options);
+	if (error)
+		return error;
+	return ext2_reconfigure_options(
+		sb, &options, (*flags & SB_RDONLY) != 0);
+}
+#else
+static int ifs_ext2_reconfigure(struct fs_context *fc)
+{
+	struct super_block *sb = fc->root->d_sb;
+	struct ext2_sb_info *sbi = EXT2_SB(sb);
+	struct ext2_mount_options options;
+
+	spin_lock(&sbi->s_lock);
+	options.s_mount_opt = sbi->s_mount_opt;
+	options.s_resuid = sbi->s_resuid;
+	options.s_resgid = sbi->s_resgid;
+	spin_unlock(&sbi->s_lock);
+	ifs_ext2_apply_context(&options, fc->fs_private);
+	return ext2_reconfigure_options(
+		sb, &options, (fc->sb_flags & SB_RDONLY) != 0);
+}
+#endif
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 0, 0)
+static int ext2_fill_super(struct super_block *sb, struct fs_context *fc)
+#else
 static int ext2_fill_super(struct super_block *sb, void *data, int silent)
+#endif
 {
 	struct ext2_sb_info *sbi = NULL;
 	struct buffer_head *sbh = NULL;
@@ -1297,7 +1335,14 @@ static int ext2_fill_super(struct super_block *sb, void *data, int silent)
 	int error;
 	bool counters_ready = false;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 0, 0)
+	struct ifs_ext2_fs_context *ctx = fc->fs_private;
+	int silent = (fc->sb_flags & SB_SILENT) != 0;
+
+	sb_block = ctx->sb_block;
+#else
 	sb_block = ext2_extract_superblock_option(&data);
+#endif
 
 	sbi = kzalloc(sizeof(*sbi), GFP_KERNEL);
 	if (!sbi)
@@ -1394,9 +1439,13 @@ static int ext2_fill_super(struct super_block *sb, void *data, int silent)
 	sbh = NULL;
 
 	ext2_default_mount_options(es, &options);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 0, 0)
+	ifs_ext2_apply_context(&options, ctx);
+#else
 	error = ext2_parse_options(data, sb, &options);
 	if (error)
 		goto fail;
+#endif
 
 	sbi->s_mount_opt = options.s_mount_opt;
 	sbi->s_resuid = options.s_resuid;
@@ -1529,16 +1578,54 @@ fail:
 	return error;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(7, 0, 0)
 static struct dentry *ext2_mount(struct file_system_type *type,
 				 int flags, const char *device, void *data)
 {
 	return mount_bdev(type, flags, device, data, ext2_fill_super);
 }
+#else
+static int ifs_ext2_get_tree(struct fs_context *fc)
+{
+	return get_tree_bdev(fc, ext2_fill_super);
+}
+
+static void ifs_ext2_free_context(struct fs_context *fc)
+{
+	kfree(fc->fs_private);
+}
+
+static const struct fs_context_operations ifs_ext2_context_operations = {
+	.parse_param = ifs_ext2_parse_param,
+	.parse_monolithic = generic_parse_monolithic,
+	.get_tree = ifs_ext2_get_tree,
+	.reconfigure = ifs_ext2_reconfigure,
+	.free = ifs_ext2_free_context,
+};
+
+static int ifs_ext2_init_fs_context(struct fs_context *fc)
+{
+	struct ifs_ext2_fs_context *ctx;
+
+	ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);
+	if (!ctx)
+		return -ENOMEM;
+	ctx->sb_block = 1;
+	fc->fs_private = ctx;
+	fc->ops = &ifs_ext2_context_operations;
+	return 0;
+}
+#endif
 
 static struct file_system_type ext2_fs_type = {
 	.owner = THIS_MODULE,
 	.name = "ext2",
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 0, 0)
+	.init_fs_context = ifs_ext2_init_fs_context,
+	.parameters = ifs_ext2_parameters,
+#else
 	.mount = ext2_mount,
+#endif
 	.kill_sb = kill_block_super,
 	.fs_flags = FS_REQUIRES_DEV,
 };
