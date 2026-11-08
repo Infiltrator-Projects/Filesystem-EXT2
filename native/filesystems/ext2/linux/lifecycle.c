@@ -25,11 +25,18 @@
 
 #include "linux_adapter.h"
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(7, 0, 0)
+#include <linux/fs_context.h>
+#include <linux/fs_parser.h>
+#endif
+
 static struct kmem_cache *ext2_inode_cachep;
 
 static void ext2_write_super(struct super_block *sb);
 static int ext2_sync_fs(struct super_block *sb, int wait);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(7, 0, 0)
 static int ext2_remount(struct super_block *sb, int *flags, char *data);
+#endif
 static int ext2_statfs(struct dentry *dentry, struct kstatfs *buf);
 static int ext2_freeze(struct super_block *sb);
 static int ext2_unfreeze(struct super_block *sb);
@@ -176,6 +183,7 @@ static void ext2_destroy_inode_cache(void)
 	ext2_inode_cachep = NULL;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(7, 0, 0)
 enum ext2_option {
 	EXT2_OPT_BSD_DF,
 	EXT2_OPT_MINIX_DF,
@@ -408,6 +416,203 @@ static unsigned long ext2_extract_superblock_option(void **data)
 	*data = end;
 	return block;
 }
+
+
+#else /* Linux 7: typed filesystem context, not the removed mount_bdev API. */
+
+/*
+ * Option state is deferred until the on-disk superblock is validated.
+ * Explicit mount options override the filesystem's stored defaults;
+ * unspecified options do not silently erase those defaults.
+ */
+struct ifs_ext2_fs_context {
+	unsigned long changed;
+	unsigned long values;
+	kuid_t resuid;
+	kgid_t resgid;
+	unsigned long sb_block;
+	bool has_resuid;
+	bool has_resgid;
+};
+
+enum ifs_ext2_parameter {
+	IFS_EXT2_P_BSDDF, IFS_EXT2_P_MINIXDF,
+	IFS_EXT2_P_GRPID, IFS_EXT2_P_NOGRPID,
+	IFS_EXT2_P_RESGID, IFS_EXT2_P_RESUID,
+	IFS_EXT2_P_SB, IFS_EXT2_P_ERRORS,
+	IFS_EXT2_P_NOUID32, IFS_EXT2_P_DEBUG,
+	IFS_EXT2_P_OLDALLOC, IFS_EXT2_P_ORLOV,
+	IFS_EXT2_P_NOBH, IFS_EXT2_P_USER_XATTR,
+	IFS_EXT2_P_ACL, IFS_EXT2_P_XIP, IFS_EXT2_P_DAX,
+	IFS_EXT2_P_NOQUOTA, IFS_EXT2_P_QUOTA,
+	IFS_EXT2_P_USRQUOTA, IFS_EXT2_P_GRPQUOTA,
+	IFS_EXT2_P_RESERVATION,
+};
+
+static const struct constant_table ifs_ext2_error_values[] = {
+	{ "continue", EXT2_MOUNT_ERRORS_CONT },
+	{ "panic", EXT2_MOUNT_ERRORS_PANIC },
+	{ "remount-ro", EXT2_MOUNT_ERRORS_RO },
+	{}
+};
+
+static const struct fs_parameter_spec ifs_ext2_parameters[] = {
+	fsparam_flag("bsddf", IFS_EXT2_P_BSDDF),
+	fsparam_flag("minixdf", IFS_EXT2_P_MINIXDF),
+	fsparam_flag("grpid", IFS_EXT2_P_GRPID),
+	fsparam_flag("bsdgroups", IFS_EXT2_P_GRPID),
+	fsparam_flag("nogrpid", IFS_EXT2_P_NOGRPID),
+	fsparam_flag("sysvgroups", IFS_EXT2_P_NOGRPID),
+	fsparam_gid("resgid", IFS_EXT2_P_RESGID),
+	fsparam_uid("resuid", IFS_EXT2_P_RESUID),
+	fsparam_u32("sb", IFS_EXT2_P_SB),
+	fsparam_enum("errors", IFS_EXT2_P_ERRORS, ifs_ext2_error_values),
+	fsparam_flag("nouid32", IFS_EXT2_P_NOUID32),
+	fsparam_flag("debug", IFS_EXT2_P_DEBUG),
+	fsparam_flag("oldalloc", IFS_EXT2_P_OLDALLOC),
+	fsparam_flag("orlov", IFS_EXT2_P_ORLOV),
+	fsparam_flag("nobh", IFS_EXT2_P_NOBH),
+	fsparam_flag_no("user_xattr", IFS_EXT2_P_USER_XATTR),
+	fsparam_flag_no("acl", IFS_EXT2_P_ACL),
+	fsparam_flag("xip", IFS_EXT2_P_XIP),
+	fsparam_flag("dax", IFS_EXT2_P_DAX),
+	fsparam_flag("noquota", IFS_EXT2_P_NOQUOTA),
+	fsparam_flag("quota", IFS_EXT2_P_QUOTA),
+	fsparam_flag("usrquota", IFS_EXT2_P_USRQUOTA),
+	fsparam_flag("grpquota", IFS_EXT2_P_GRPQUOTA),
+	fsparam_flag_no("reservation", IFS_EXT2_P_RESERVATION),
+	{}
+};
+
+static void ifs_ext2_context_option(struct ifs_ext2_fs_context *ctx,
+				    unsigned long bit, bool enable)
+{
+	ctx->changed |= bit;
+	ctx->values = enable ? ctx->values | bit : ctx->values & ~bit;
+}
+
+static void ifs_ext2_apply_context(struct ext2_mount_options *options,
+				  const struct ifs_ext2_fs_context *ctx)
+{
+	options->s_mount_opt = (options->s_mount_opt & ~ctx->changed) |
+				ctx->values;
+	if (ctx->has_resuid)
+		options->s_resuid = ctx->resuid;
+	if (ctx->has_resgid)
+		options->s_resgid = ctx->resgid;
+}
+
+static int ifs_ext2_parse_param(struct fs_context *fc,
+			       struct fs_parameter *param)
+{
+	struct ifs_ext2_fs_context *ctx = fc->fs_private;
+	struct fs_parse_result result;
+	int option = fs_parse(fc, ifs_ext2_parameters, param, &result);
+
+	if (option < 0)
+		return option;
+
+	switch (option) {
+	case IFS_EXT2_P_BSDDF:
+		ifs_ext2_context_option(ctx, EXT2_MOUNT_MINIX_DF, false);
+		break;
+	case IFS_EXT2_P_MINIXDF:
+		ifs_ext2_context_option(ctx, EXT2_MOUNT_MINIX_DF, true);
+		break;
+	case IFS_EXT2_P_GRPID:
+		ifs_ext2_context_option(ctx, EXT2_MOUNT_GRPID, true);
+		break;
+	case IFS_EXT2_P_NOGRPID:
+		ifs_ext2_context_option(ctx, EXT2_MOUNT_GRPID, false);
+		break;
+	case IFS_EXT2_P_RESGID:
+		ctx->resgid = result.gid;
+		ctx->has_resgid = true;
+		break;
+	case IFS_EXT2_P_RESUID:
+		ctx->resuid = result.uid;
+		ctx->has_resuid = true;
+		break;
+	case IFS_EXT2_P_SB:
+		ctx->sb_block = result.uint_32;
+		break;
+	case IFS_EXT2_P_ERRORS:
+		ctx->changed |= EXT2_MOUNT_ERRORS_CONT |
+			EXT2_MOUNT_ERRORS_RO | EXT2_MOUNT_ERRORS_PANIC;
+		ctx->values &= ~(EXT2_MOUNT_ERRORS_CONT |
+			EXT2_MOUNT_ERRORS_RO | EXT2_MOUNT_ERRORS_PANIC);
+		ctx->values |= result.uint_32;
+		break;
+	case IFS_EXT2_P_NOUID32:
+		ifs_ext2_context_option(ctx, EXT2_MOUNT_NO_UID32, true);
+		break;
+	case IFS_EXT2_P_DEBUG:
+		ifs_ext2_context_option(ctx, EXT2_MOUNT_DEBUG, true);
+		break;
+	case IFS_EXT2_P_OLDALLOC:
+		ifs_ext2_context_option(ctx, EXT2_MOUNT_OLDALLOC, true);
+		break;
+	case IFS_EXT2_P_ORLOV:
+		ifs_ext2_context_option(ctx, EXT2_MOUNT_OLDALLOC, false);
+		break;
+	case IFS_EXT2_P_NOBH:
+		/* Retained compatibility: this obsolete option is a no-op. */
+		break;
+	case IFS_EXT2_P_USER_XATTR:
+#ifdef CONFIG_EXT2_FS_XATTR
+		ifs_ext2_context_option(ctx, EXT2_MOUNT_XATTR_USER,
+					!result.negated);
+#else
+		return -EOPNOTSUPP;
+#endif
+		break;
+	case IFS_EXT2_P_ACL:
+#ifdef CONFIG_EXT2_FS_POSIX_ACL
+		ifs_ext2_context_option(ctx, EXT2_MOUNT_POSIX_ACL,
+					!result.negated);
+#else
+		return -EOPNOTSUPP;
+#endif
+		break;
+	case IFS_EXT2_P_XIP:
+		ifs_ext2_context_option(ctx, EXT2_MOUNT_XIP, true);
+		fallthrough;
+	case IFS_EXT2_P_DAX:
+#ifdef CONFIG_FS_DAX
+		ifs_ext2_context_option(ctx, EXT2_MOUNT_DAX, true);
+#else
+		return -EOPNOTSUPP;
+#endif
+		break;
+	case IFS_EXT2_P_NOQUOTA:
+		/* Legacy spelling was also deliberately a no-op. */
+		break;
+	case IFS_EXT2_P_QUOTA:
+	case IFS_EXT2_P_USRQUOTA:
+#ifdef CONFIG_QUOTA
+		ifs_ext2_context_option(ctx, EXT2_MOUNT_USRQUOTA, true);
+#else
+		return -EOPNOTSUPP;
+#endif
+		break;
+	case IFS_EXT2_P_GRPQUOTA:
+#ifdef CONFIG_QUOTA
+		ifs_ext2_context_option(ctx, EXT2_MOUNT_GRPQUOTA, true);
+#else
+		return -EOPNOTSUPP;
+#endif
+		break;
+	case IFS_EXT2_P_RESERVATION:
+		ifs_ext2_context_option(ctx, EXT2_MOUNT_RESERVATION,
+					!result.negated);
+		break;
+	default:
+		return -EINVAL;
+	}
+	return 0;
+}
+
+#endif /* legacy mount options vs typed Linux 7 mount options */
 
 static void ext2_default_mount_options(const struct ext2_super_block *es,
 				       struct ext2_mount_options *options)
