@@ -1,0 +1,84 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Fast COMPILE-only ABI gate. Full native Kernel/module/VM verification
+# is separately performed by Infiltrator-Projects/Kernel and requires
+# an actual Module.symvers, live module insertion and disposable images.
+name: EXT2 Linux 7 native VFS interface compile gate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'native/filesystems/ext2/linux/**'
+      - '.github/workflows/vfs-api-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-vfs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout canonical EXT2 adapter
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v4
+
+      - name: Install only the compiler and kernel configuration tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential bc bison flex libelf-dev libssl-dev kmod git
+
+      - name: Acquire current InfiltratorOS 7-based Kernel source
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --filter=blob:none \
+            https://github.com/Infiltrator-Projects/Kernel.git \
+            "$RUNNER_TEMP/Kernel"
+          test -s "$RUNNER_TEMP/Kernel/fs/ext2/super.c"
+          test -s native/filesystems/ext2/linux/Makefile
+
+      - name: Prepare exact native source headers without compiling vmlinux
+        run: |
+          set -euo pipefail
+          kernel="$RUNNER_TEMP/Kernel"
+          obj="$RUNNER_TEMP/KernelObjects"
+          mkdir -p "$obj"
+          make -C "$kernel" O="$obj" x86_64_defconfig
+          "$kernel/scripts/config" --file "$obj/.config" \
+            -e MODULES -d MODVERSIONS -d EXT2_FS -d EXT4_USE_FOR_EXT2 \
+            -d MODULE_SIG -d DEBUG_INFO -d 9P_FS -d NET_9P \
+            --set-str SYSTEM_TRUSTED_KEYS '' \
+            --set-str SYSTEM_REVOCATION_KEYS ''
+          make -C "$kernel" O="$obj" KERNELRELEASE=0.1.0-infiltrator olddefconfig
+          make -C "$kernel" O="$obj" KERNELRELEASE=0.1.0-infiltrator \
+            -j 4 modules_prepare
+          test -s "$obj/include/generated/utsrelease.h"
+          grep -Fqx '# CONFIG_EXT2_FS is not set' "$obj/.config"
+
+      - name: Compile independent EXT2 VFS objects against native headers
+        run: |
+          set -euo pipefail
+          kernel="$RUNNER_TEMP/Kernel"
+          obj="$RUNNER_TEMP/KernelObjects"
+          adapter="$GITHUB_WORKSPACE/native/filesystems/ext2/linux"
+          make -C "$kernel" O="$obj" KERNELRELEASE=0.1.0-infiltrator \
+            M="$adapter" KBUILD_MODPOST_WARN=1 -j 4 modules \
+            > "$RUNNER_TEMP/EXT2-Compile.log" 2>&1 || {
+            tail -n 180 "$RUNNER_TEMP/EXT2-Compile.log"
+            exit 1
+          }
+          for part in core_bridge allocation namespace io metadata lifecycle; do
+            test -s "$adapter/$part.o"
+          done
+          echo 'EXT2_LINUX7_VFS_COMPILE_PASS_ONLY'
+
+      - name: Preserve compiler output for API failures
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: EXT2-Linux7-VFS-Compile-${{ github.sha }}
+          path: ${{ runner.temp }}/EXT2-Compile.log
+          if-no-files-found: warn
+          retention-days: 14
