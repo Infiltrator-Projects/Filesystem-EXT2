@@ -301,7 +301,7 @@ static ssize_t ext2_regular_write(struct kiocb *iocb, struct iov_iter *from)
 	return generic_file_write_iter(iocb, from);
 }
 
-int ext2_fileattr_get(struct dentry *dentry, struct file_kattr *fa)
+int ext2_fileattr_get(struct dentry *dentry, ifs_ext2_fileattr *fa)
 {
 	const struct ext2_inode_info *ei = EXT2_I(d_inode(dentry));
 
@@ -310,7 +310,7 @@ int ext2_fileattr_get(struct dentry *dentry, struct file_kattr *fa)
 }
 
 int ext2_fileattr_set(struct mnt_idmap *idmap,
-		      struct dentry *dentry, struct file_kattr *fa)
+		      struct dentry *dentry, ifs_ext2_fileattr *fa)
 {
 	struct inode *inode = d_inode(dentry);
 	struct ext2_inode_info *ei = EXT2_I(inode);
@@ -1086,7 +1086,7 @@ static void ifs_ext2_readahead(struct readahead_control *rac)
 }
 
 static int ifs_ext2_write_begin(
-	const struct kiocb *iocb, struct address_space *mapping,
+	ifs_ext2_write_context *context, struct address_space *mapping,
 	loff_t pos, unsigned len, struct folio **folio, void **fsdata)
 {
 	int error = block_write_begin(
@@ -1098,12 +1098,12 @@ static int ifs_ext2_write_begin(
 }
 
 static int ifs_ext2_write_end(
-	const struct kiocb *iocb, struct address_space *mapping,
+	ifs_ext2_write_context *context, struct address_space *mapping,
 	loff_t pos, unsigned len, unsigned copied,
 	struct folio *folio, void *fsdata)
 {
 	const int written = generic_write_end(
-		iocb, mapping, pos, len, copied, folio, fsdata);
+		context, mapping, pos, len, copied, folio, fsdata);
 
 	if (written < len)
 		ext2_write_failed(mapping, pos + len);
@@ -1229,7 +1229,7 @@ struct inode *ext2_iget(struct super_block *sb, unsigned long ino)
 	inode = iget_locked(sb, ino);
 	if (!inode)
 		return ERR_PTR(-ENOMEM);
-	if (!(inode_state_read_once(inode) & I_NEW))
+	if (!(ifs_ext2_inode_state(inode) & I_NEW))
 		return inode;
 
 	ei = EXT2_I(inode);
