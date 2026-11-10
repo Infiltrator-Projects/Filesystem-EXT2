@@ -42,15 +42,15 @@ target_link_libraries(ext-core PUBLIC InfiltratrCommon::Common OpenSSL::Crypto S
  # Keep the genuine freestanding EXT2 drop-in engine alongside the
  # separately owned EXT Test Media/Defragmenter fixture ABI in ONE EXT2.so.
  # Test Media must not reject an otherwise installed EXT2 module.
+ # Production .so is V2-only and links one portable engine, no Defragmenter
+ # V1 entrypoint, CLI worker or imported legacy host-service adapters.
  add_library(ext-ext2-driver SHARED
-  $<TARGET_OBJECTS:ext-core>
-  compat/legacy_services.c compat/runtime_alloc.c module/ext_module.c module/ext2_common.c
+  module/ext2_common.c
   native/filesystems/ext2/core/ext2_core.c
   native/filesystems/ext2/core/ext2_engine.c
   native/filesystems/ext2/module/ext2_module.c)
  set_target_properties(ext-ext2-driver PROPERTIES PREFIX "" OUTPUT_NAME "EXT2" SUFFIX ".so")
- target_compile_definitions(ext-ext2-driver PRIVATE
-  _GNU_SOURCE _FILE_OFFSET_BITS=64 IFS_EXT_FORMAT_ID="ext2")
+ target_compile_definitions(ext-ext2-driver PRIVATE _GNU_SOURCE _FILE_OFFSET_BITS=64)
  target_compile_options(ext-ext2-driver PRIVATE -Wall -Wextra -Wpedantic -Werror)
  target_link_options(ext-ext2-driver PRIVATE -Wl,-z,defs)
  target_include_directories(ext-ext2-driver PRIVATE
@@ -81,11 +81,25 @@ target_link_libraries(ext-core PUBLIC InfiltratrCommon::Common OpenSSL::Crypto S
 # The bitmap/descriptor cache regression came from Defragmenter, but the
 # private EXT disk implementation and its native unit tests live here.
 if(BUILD_TESTING)
+ # The historical worker is retained only for independent regression testing;
+ # it is NOT linked to or distributed with EXT2.so.
+ add_library(ext-legacy-test-support SHARED
+  $<TARGET_OBJECTS:ext-core>
+  compat/legacy_services.c compat/runtime_alloc.c module/ext_module.c)
+ target_include_directories(ext-legacy-test-support PRIVATE
+   "${EXT_SRC}" "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/include"
+   "${CMAKE_CURRENT_SOURCE_DIR}/include"
+   "${CMAKE_CURRENT_SOURCE_DIR}/compat"
+   "${CMAKE_CURRENT_BINARY_DIR}")
+ target_compile_definitions(ext-legacy-test-support PRIVATE
+   _GNU_SOURCE _FILE_OFFSET_BITS=64 IFS_EXT_FORMAT_ID="ext2")
+ target_link_libraries(ext-legacy-test-support PRIVATE
+   InfiltratrCommon::Common OpenSSL::Crypto SQLite::SQLite3 Threads::Threads)
  add_library(ext-test-host STATIC tests/test_host_services.c)
  target_include_directories(ext-test-host PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include" "${CMAKE_CURRENT_SOURCE_DIR}/compat")
  target_compile_definitions(ext-test-host PRIVATE _GNU_SOURCE _FILE_OFFSET_BITS=64)
  target_compile_options(ext-test-host PRIVATE -Wall -Wextra -Wpedantic -Werror)
- target_link_libraries(ext-test-host PUBLIC ext-ext2-driver)
+ target_link_libraries(ext-test-host PUBLIC ext-legacy-test-support)
  add_executable(ext-bitmap-cache-test tests/test_ext_bitmap_cache.c)
  target_include_directories(ext-bitmap-cache-test PRIVATE
    "${CMAKE_CURRENT_SOURCE_DIR}/migration/defragmenter/native" "${CMAKE_CURRENT_SOURCE_DIR}/compat" "${CMAKE_CURRENT_SOURCE_DIR}/tests")
@@ -117,4 +131,10 @@ if(BUILD_TESTING)
  target_compile_options(ext2-metadata-layout-test PRIVATE
   -Wall -Wextra -Wpedantic -Werror)
  add_test(NAME ext2-metadata-layout COMMAND ext2-metadata-layout-test)
+endif()
+
+if(BUILD_TESTING)
+ add_test(NAME ext2-no-legacy-public-abi
+  COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_v2_exports.sh"
+          "$<TARGET_FILE:ext-ext2-driver>")
 endif()
