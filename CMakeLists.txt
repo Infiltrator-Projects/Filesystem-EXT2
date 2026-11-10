@@ -12,7 +12,7 @@ set(INFILTRATR_COMMON_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(INFILTRATR_COMMON_BUILD_SHARED OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(infiltratr_common
  GIT_REPOSITORY https://github.com/Infiltrator-Projects/Libraries.git
- GIT_TAG c76ec95ef66fc728df6a906ad75a6a4dd63b419b)
+ GIT_TAG f002d99f5971e6f55aa91b5a245b8307bba6b0ee)
 FetchContent_MakeAvailable(infiltratr_common)
 # The embedded Common SDK is linked, not installed with filesystem runtime modules.
 set_property(DIRECTORY "${infiltratr_common_SOURCE_DIR}" PROPERTY EXCLUDE_FROM_ALL TRUE)
@@ -44,7 +44,7 @@ foreach(kind IN ITEMS ext2)
  # Test Media must not reject an otherwise installed EXT2 module.
  add_library(ext-${kind}-driver SHARED
   $<TARGET_OBJECTS:ext-core>
-  compat/legacy_services.c compat/runtime_alloc.c module/ext_module.c
+  compat/legacy_services.c compat/runtime_alloc.c module/ext_module.c module/ext2_common.c
   native/filesystems/ext2/core/ext2_core.c
   native/filesystems/ext2/core/ext2_engine.c
   native/filesystems/ext2/module/ext2_module.c)
@@ -70,7 +70,8 @@ foreach(kind IN ITEMS ext2)
     "${CMAKE_CURRENT_SOURCE_DIR}/native/filesystems/ext2/core"
     "${CMAKE_CURRENT_SOURCE_DIR}/native/filesystems/ext2/module")
   target_compile_options(ext2-dropin-module-test PRIVATE -Wall -Wextra -Wpedantic -Werror -UNDEBUG)
-  target_link_libraries(ext2-dropin-module-test PRIVATE ext-${kind}-driver)
+  target_compile_definitions(ext2-dropin-module-test PRIVATE IFS_TEST_COMMON_V2=1)
+  target_link_libraries(ext2-dropin-module-test PRIVATE ext-${kind}-driver InfiltratrCommon::Common)
   add_test(NAME ext2-dropin-module-contract COMMAND ext2-dropin-module-test)
  endif()
  # EXT2/EXT3 are built solely for cross-format regression.

@@ -1,6 +1,12 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "../native/filesystems/ext2/core/ext2_engine.h"
 #include "../native/filesystems/ext2/module/ext2_module.h"
+#ifdef IFS_TEST_COMMON_V2
+#include <infiltratr/filesystem_module_v2.h>
+extern const IfsFsModuleApiV1 *infiltrator_filesystem_api_v1(void);
+extern const IfsFsModuleApiV2 *infiltrator_filesystem_api_v2(void);
+#include <stdlib.h>
+#endif
 
 #include <stdio.h>
 #include <string.h>
@@ -50,6 +56,19 @@ static int memory_write(
     return 0;
 }
 
+#ifdef IFS_TEST_COMMON_V2
+static void *common_alloc(void *host, size_t size)
+{
+    (void)host;
+    return malloc(size);
+}
+static void common_release(void *host, void *p)
+{
+    (void)host;
+    free(p);
+}
+
+#endif
 static int fail(const char *message)
 {
     fprintf(stderr, "ext2_engine_test: %s\n", message);
@@ -157,6 +176,58 @@ int main(void)
     memcpy(disk.bytes + BLOCK_SIZE * 7U, "hello", 5U);
 
 
+#ifdef IFS_TEST_COMMON_V2
+    /* Exercise the production Common ABI against these same EXT2 bytes,
+     * not a mocked declaration or a second filesystem implementation. */
+    {
+        const IfsFsModuleApiV1 *common = infiltrator_filesystem_api_v1();
+        const IfsFsModuleApiV2 *extension = infiltrator_filesystem_api_v2();
+        IfsFsHostIoV1 host = {0};
+        IfsFsVolumeInfoV1 details = {0};
+        IfsFsEntryV1 entry = {0};
+        char name[256], content[6] = {0};
+        void *mounted = NULL;
+        unsigned int variant = 0u;
+
+        host.structure_bytes = sizeof host;
+        host.flags = IFS_FS_IO_READ_ONLY;
+        host.context = &disk;
+        host.volume_bytes = sizeof disk.bytes;
+        host.read_at = memory_read;
+        host.allocate = common_alloc;
+        host.release = common_release;
+        details.structure_bytes = sizeof details;
+        entry.structure_bytes = sizeof entry;
+        entry.name = name;
+        entry.name_capacity = sizeof name;
+        if (!ifs_fs_common_api_valid(common, "ext2") ||
+            !ifs_fs_api_v2_valid(extension, "ext2") ||
+            extension->base_v1 != common ||
+            (extension->runtime_profiles & IFS_FS_PROFILE_KERNEL) != 0u ||
+            !ifs_fs_group_v2(extension, IFS_FS_GROUP_VOLUME))
+            return fail("Common V1/V2 descriptor invalid");
+        if (common->probe(&host, &variant) != IFS_FS_OK || variant != 2u ||
+            common->mount(&host, &mounted, &details) != IFS_FS_OK ||
+            !mounted || details.block_bytes != BLOCK_SIZE ||
+            details.total_bytes != sizeof disk.bytes)
+            return fail("Common probe or mount rejected real EXT2 media");
+        if (common->stat(mounted, "/hello", &entry) != IFS_FS_OK ||
+            strcmp(name, "hello") || entry.size_bytes != 5u ||
+            common->directory_entry(mounted, "/", 0u, &entry) != IFS_FS_OK ||
+            strcmp(name, "hello") ||
+            common->directory_entry(mounted, "/", 1u, &entry) != IFS_FS_END ||
+            common->read(mounted, "/hello", 0u, content, 5u) != IFS_FS_OK ||
+            memcmp(content, "hello", 5u) != 0)
+            return fail("Common stat, directory or read differs from EXT2 engine");
+        if (common->write(mounted, "/hello", 0u, "X", 1u) != IFS_FS_ACCESS ||
+            common->create != NULL || common->format != NULL ||
+            common->recover != NULL || disk.writes != 0u)
+            return fail("Common read-only mount or capability safety violated");
+        if (common->unmount(mounted) != IFS_FS_OK)
+            return fail("Common unmount failed");
+    }
+
+#endif
     if (!api || api->abi_version != IFS_EXT2_DROPIN_ABI_VERSION ||
         api->structure_bytes != sizeof(*api) ||
         strcmp(api->format_id, "ext2") ||
