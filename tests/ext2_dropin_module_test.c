@@ -56,6 +56,16 @@ static int memory_write(
 }
 
 #ifdef IFS_TEST_COMMON_V2
+static int capped_read(void *host, uint64_t offset, void *dest,
+                       uint32_t count)
+{
+    return count <= 512u ? memory_read(host, offset, dest, count) : -1;
+}
+static int capped_write(void *host, uint64_t offset, const void *src,
+                        uint32_t count)
+{
+    return count <= 512u ? memory_write(host, offset, src, count) : -1;
+}
 static void *common_alloc(void *host, size_t size)
 {
     (void)host;
@@ -188,9 +198,9 @@ int main(void)
             .volume_bytes = sizeof disk.bytes,
             .logical_sector_bytes = 512u,
             .physical_sector_bytes = 512u,
-            .maximum_transfer_bytes = BLOCK_SIZE,
+            .maximum_transfer_bytes = 512u,
             .context = &disk,
-            .read_at = memory_read,
+            .read_at = capped_read,
             .allocate = common_alloc,
             .release = common_release
         };
@@ -236,6 +246,29 @@ int main(void)
             return fail("Native V2 mount violated read-only policy");
         if (core->unmount(mounted) != IFS_FS_OK)
             return fail("Native V2 unmount failed");
+        /* A writable V2 host has a verified exclusive durable lease, and
+         * byte spans larger than 512 are still bounded by its advertised
+         * transfer limit. Keep the original native-engine fixture untouched. */
+        MemoryDisk writable_disk = disk;
+        IfsFsHostRuntimeV2 writable = host;
+        writable.capabilities = IFS_FS_HOST_EXCLUSIVE | IFS_FS_HOST_DURABLE;
+        writable.context = &writable_disk;
+        writable.write_at = capped_write;
+        writable.flush = memory_flush;
+        mounted = NULL;
+        if (core->mount(&writable, &mounted, &details) != IFS_FS_OK ||
+            !mounted)
+            return fail("Native V2 exclusive mount failed");
+        if (core->write(mounted, "/hello", 1u, "A", 1u) != IFS_FS_OK ||
+            writable_disk.writes != 1u ||
+            memcmp(writable_disk.bytes + BLOCK_SIZE * 7U, "hAllo", 5u))
+            return fail("Native V2 existing-file write did not persist");
+        if (core->write(mounted, "/hello", 4u, "AB", 2u) !=
+            IFS_FS_UNSUPPORTED || writable_disk.writes != 1u)
+            return fail("Native V2 permitted extending a file");
+        if (core->unmount(mounted) != IFS_FS_OK)
+            return fail("Native V2 writable unmount failed");
+        flush_count = 0U;
     }
 
 #endif
