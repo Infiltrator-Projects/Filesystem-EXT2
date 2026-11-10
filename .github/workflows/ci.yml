@@ -12,7 +12,9 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
-      - name: Build standalone filesystem shared object and run regression
+      - name: Install native V2 build prerequisites
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential binutils cmake git libssl-dev libsqlite3-dev
+      - name: Build native V2 filesystem shared object and run regression
         run: make test
 
       - name: Verify exact runtime payload without installing on the runner
