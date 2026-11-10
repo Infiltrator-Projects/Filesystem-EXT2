@@ -59,12 +59,16 @@ static int memory_write(
 static int capped_read(void *host, uint64_t offset, void *dest,
                        uint32_t count)
 {
-    return count <= 512u ? memory_read(host, offset, dest, count) : -1;
+    return count <= 512u && (offset % 512u) == 0u &&
+           count != 0u && (count % 512u) == 0u
+        ? memory_read(host, offset, dest, count) : -1;
 }
 static int capped_write(void *host, uint64_t offset, const void *src,
                         uint32_t count)
 {
-    return count <= 512u ? memory_write(host, offset, src, count) : -1;
+    return count <= 512u && (offset % 512u) == 0u &&
+           count != 0u && (count % 512u) == 0u
+        ? memory_write(host, offset, src, count) : -1;
 }
 static void *common_alloc(void *host, size_t size)
 {

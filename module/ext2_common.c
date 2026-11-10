@@ -22,51 +22,78 @@ static int io_usable(const IfsFsHostRuntimeV2 *h)
     return ifs_fs_host_v2_valid(h) && h->volume_bytes >= 2048u;
 }
 
-/* The host's maximum transfer is part of the Common V2 contract. The
- * native engine may request a whole metadata block: split that request into
- * bounded, partition-relative I/O without introducing an extra parser. */
+/* Host callbacks are raw block transfers, not byte streams. The native
+ * EXT2 engine sometimes requests only one bitmap byte or part of a file.
+ * Convert those requests to aligned, sector-sized transfers, preserving
+ * the verified Common V2 exclusive and durable write policy. */
+static int host_transfer(CommonVolume *v, uint64_t offset, void *buffer,
+                         uint32_t bytes, int write)
+{
+    const IfsFsHostRuntimeV2 *h = &v->host;
+    const uint32_t sector = h->logical_sector_bytes;
+    const uint32_t max_aligned =
+        h->maximum_transfer_bytes - h->maximum_transfer_bytes % sector;
+    uint8_t *cursor = (uint8_t *)buffer;
+    uint8_t *bounce = NULL;
+    int status = -1;
+    if ((!cursor && bytes) || !h->read_at || !sector || !max_aligned ||
+        offset > h->volume_bytes || bytes > h->volume_bytes - offset ||
+        (write && (!h->write_at || !h->flush ||
+         !(h->capabilities & IFS_FS_HOST_EXCLUSIVE) ||
+         !(h->capabilities & IFS_FS_HOST_DURABLE))))
+        return -1;
+    while (bytes) {
+        const uint32_t in_sector = (uint32_t)(offset % sector);
+        if (h->cancelled && h->cancelled(h->context)) goto done;
+        if (in_sector || bytes < sector) {
+            const uint64_t aligned = offset - in_sector;
+            const uint32_t count =
+                bytes < sector - in_sector ? bytes : sector - in_sector;
+            if (aligned > h->volume_bytes ||
+                sector > h->volume_bytes - aligned)
+                goto done;
+            if (!bounce) {
+                bounce = h->allocate(h->context, sector);
+                if (!bounce) goto done;
+            }
+            if (h->read_at(h->context, aligned, bounce, sector) != 0)
+                goto done;
+            if (write) {
+                memcpy(bounce + in_sector, cursor, count);
+                if (h->write_at(h->context, aligned, bounce, sector) != 0)
+                    goto done;
+            } else {
+                memcpy(cursor, bounce + in_sector, count);
+            }
+            cursor += count;
+            offset += count;
+            bytes -= count;
+        } else {
+            uint32_t count = bytes < max_aligned ? bytes : max_aligned;
+            count -= count % sector;
+            if (!count || (write ?
+                h->write_at(h->context, offset, cursor, count) :
+                h->read_at(h->context, offset, cursor, count)) != 0)
+                goto done;
+            cursor += count;
+            offset += count;
+            bytes -= count;
+        }
+    }
+    status = 0;
+done:
+    if (bounce) h->release(h->context, bounce);
+    return status;
+}
 static int host_read(void *context, uint64_t offset, void *destination,
                      uint32_t bytes)
 {
-    CommonVolume *v = context;
-    const IfsFsHostRuntimeV2 *h = &v->host;
-    uint8_t *out = destination;
-    if (!h->read_at || (!out && bytes) ||
-        offset > h->volume_bytes || bytes > h->volume_bytes - offset)
-        return -1;
-    while (bytes) {
-        uint32_t chunk = bytes;
-        if (chunk > h->maximum_transfer_bytes)
-            chunk = h->maximum_transfer_bytes;
-        if (h->read_at(h->context, offset, out, chunk) != 0)
-            return -1;
-        offset += chunk;
-        out += chunk;
-        bytes -= chunk;
-    }
-    return 0;
+    return host_transfer(context, offset, destination, bytes, 0);
 }
-
 static int host_write(void *context, uint64_t offset, const void *source,
                       uint32_t bytes)
 {
-    CommonVolume *v = context;
-    const IfsFsHostRuntimeV2 *h = &v->host;
-    const uint8_t *in = source;
-    if (!h->write_at || (!in && bytes) ||
-        offset > h->volume_bytes || bytes > h->volume_bytes - offset)
-        return -1;
-    while (bytes) {
-        uint32_t chunk = bytes;
-        if (chunk > h->maximum_transfer_bytes)
-            chunk = h->maximum_transfer_bytes;
-        if (h->write_at(h->context, offset, in, chunk) != 0)
-            return -1;
-        offset += chunk;
-        in += chunk;
-        bytes -= chunk;
-    }
-    return 0;
+    return host_transfer(context, offset, (void *)source, bytes, 1);
 }
 
 static int host_flush(void *context)
