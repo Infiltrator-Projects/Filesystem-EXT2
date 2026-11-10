@@ -20,9 +20,9 @@ int main(void)
 {
     uint8_t bytes[4096] = {0};
     const IfsFsModuleApiV2 *api = infiltrator_filesystem_api_v2();
-    if (!ifs_fs_api_v2_native_valid(api,"ext2")) return 1;
-    const IfsFsCoreOpsV1 *core =
-        (const IfsFsCoreOpsV1 *)ifs_fs_group_v2(api,IFS_FS_GROUP_CORE);
+    if (!ifs_fs_api_v2_valid(api,"ext2")) return 1;
+    const IfsFsCoreOpsV2 *core =
+        (const IfsFsCoreOpsV2 *)ifs_fs_group_v2(api,IFS_FS_GROUP_CORE);
     if (!core) return 1;
     IfsFsHostRuntimeV2 host = {
         .abi_version=IFS_FS_HOST_ABI_V2,
@@ -44,7 +44,7 @@ int main(void)
     /* Genuine APFS container signature is not EXT2. */
     memcpy(bytes+32, "NXSB", 4);
     if (core->probe(&host,&variant)==IFS_FS_OK) return 1;
-    host.abi_version=IFS_FS_COMMON_ABI_V1;
+    host.abi_version=0u; /* Malformed host revision, not a fallback ABI. */
     if (core->probe(&host,&variant)==IFS_FS_OK) return 1;
     puts("EXT2 V2 native probe rejected unrelated media and invalid host");
     return 0;
