@@ -379,6 +379,81 @@ static int write_file(void *v, const char *path, uint64_t pos,
     return file_io(v, path, pos, (void *)b, n, 1);
 }
 
+/* Expose the canonical EXT2 block map through Common V2. This is an
+ * actual verified extent enumerator, not a relocation capability. No planner
+ * or execute callback is advertised until their transaction engine exists. */
+static int extent_map(void *volume, const char *path, uint64_t first_extent,
+                      IfsFsExtentV2 *extents, uint32_t capacity,
+                      uint32_t *written)
+{
+    CommonVolume *v = (CommonVolume *)volume;
+    IfsExt2Inode inode;
+    uint64_t logical, index = 0u;
+    uint64_t blocks;
+    uint32_t count = 0u;
+    void *work;
+    int rc;
+    if (!valid(v) || !path || !written || !capacity || !extents)
+        return IFS_FS_INVALID;
+    *written = 0u;
+    work = scratch(v);
+    if (!work) return IFS_FS_NO_MEMORY;
+    rc = resolve(v, path, &inode, NULL, NULL, work);
+    if (rc) goto done;
+    if (ifs_ext2_inode_type(&inode) != IFS_EXT2_NODE_REGULAR) {
+        rc = IFS_FS_UNSUPPORTED;
+        goto done;
+    }
+    blocks = inode.size / v->media.fs.block_size +
+        (inode.size % v->media.fs.block_size != 0u);
+    if (blocks > UINT32_MAX) {
+        rc = IFS_FS_UNSUPPORTED;
+        goto done;
+    }
+    for (logical = 0u; logical < blocks; ++logical) {
+        ifs_ext2_u64 physical = 0u;
+        int hole = 0;
+        IfsExt2Status status;
+        if (v->host.cancelled && (logical & 255u) == 0u &&
+            v->host.cancelled(v->host.context)) {
+            rc = IFS_FS_BUSY;
+            goto done;
+        }
+        status = ifs_ext2_map_file_block(&v->media.fs, &inode,
+            (ifs_ext2_u32)logical, &physical, &hole,
+            work, v->media.fs.block_size);
+        if (status != IFS_EXT2_OK) {
+            rc = IFS_FS_CORRUPT;
+            goto done;
+        }
+        if (hole) continue;
+        status = ifs_ext2_validate_allocated_data_block(
+            &v->media.fs, physical, work, v->media.fs.block_size);
+        if (status != IFS_EXT2_OK) {
+            rc = IFS_FS_CORRUPT;
+            goto done;
+        }
+        if (index++ < first_extent) continue;
+        extents[count].logical_offset = logical * v->media.fs.block_size;
+        extents[count].physical_offset = physical * v->media.fs.block_size;
+        extents[count].length = v->media.fs.block_size;
+        extents[count].flags = 0u;
+        extents[count].reserved = 0u;
+        if (++count == capacity) break;
+    }
+    *written = count;
+    rc = count ? IFS_FS_OK : IFS_FS_END;
+done:
+    unscratch(v, work);
+    return rc;
+}
+
+static const IfsFsDefragOpsV2 defrag_group = {
+    .header = { IFS_FS_GROUP_ABI_V2, sizeof(IfsFsDefragOpsV2),
+        IFS_FS_GROUP_DEFRAG, 0u, IFS_FS_DEFRAG_MAP },
+    .map = extent_map
+};
+
 /* Advertise no create/remove/resize/repair/format until the canonical
  * EXT2 implementation actually supplies independently tested operations. */
 static int volume_query(void *mounted, IfsFsVolumeInfoV2 *out)
@@ -432,6 +507,7 @@ static const IfsFsGroupHeaderV2 *query_group(uint32_t group,
         return NULL;
     if (group == IFS_FS_GROUP_CORE) return &core_group.header;
     if (group == IFS_FS_GROUP_VOLUME) return &volume_group.header;
+    if (group == IFS_FS_GROUP_DEFRAG) return &defrag_group.header;
     return NULL;
 }
 static const IfsFsModuleApiV2 common_v2 = {
@@ -440,7 +516,8 @@ static const IfsFsModuleApiV2 common_v2 = {
     .format_id = "ext2",
     .runtime_profiles = IFS_FS_PROFILE_HOSTED,
     .group_mask = IFS_FS_GROUP_BIT(IFS_FS_GROUP_CORE) |
-                  IFS_FS_GROUP_BIT(IFS_FS_GROUP_VOLUME),
+                  IFS_FS_GROUP_BIT(IFS_FS_GROUP_VOLUME) |
+                  IFS_FS_GROUP_BIT(IFS_FS_GROUP_DEFRAG),
     .query_group = query_group
 };
 

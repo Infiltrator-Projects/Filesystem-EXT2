@@ -521,7 +521,7 @@ IfsExt2Status ifs_ext2_read_file(
  * this rejects a corrupted inode which points at an inode table or bitmap.
  * Caller owns media exclusivity; this cannot stop concurrent OS writes.
  */
-static IfsExt2Status preflight_existing_data_block(
+IfsExt2Status ifs_ext2_validate_allocated_data_block(
     const IfsExt2Volume *volume, ifs_ext2_u64 physical,
     void *scratch, ifs_ext2_u32 scratch_size)
 {
@@ -615,7 +615,7 @@ IfsExt2Status ifs_ext2_write_file_existing(
                 return status;
             if (hole)
                 return IFS_EXT2_ERROR_UNSUPPORTED;
-            status = preflight_existing_data_block(
+            status = ifs_ext2_validate_allocated_data_block(
                 volume, physical, scratch, scratch_size);
             if (status != IFS_EXT2_OK)
                 return status;

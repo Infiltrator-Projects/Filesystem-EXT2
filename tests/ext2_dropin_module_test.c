@@ -243,6 +243,23 @@ int main(void)
             core->read(mounted, "/hello", 0u, content, 5u) != IFS_FS_OK ||
             memcmp(content, "hello", 5u))
             return fail("Native V2 EXT2 stat/list/read is incorrect");
+        /* Real Common V2 defrag extent mapping shares the canonical
+         * on-disk allocation-bitmap validation with the write preflight. */
+        const IfsFsDefragOpsV2 *defrag =
+            (const IfsFsDefragOpsV2 *)ifs_fs_group_v2(
+                v2, IFS_FS_GROUP_DEFRAG);
+        IfsFsExtentV2 mapped[2] = {{0}};
+        uint32_t mapped_count = 0u;
+        if (!defrag || !defrag->map || defrag->plan || defrag->execute ||
+            defrag->map(mounted, "/hello", 0u, mapped, 2u,
+                        &mapped_count) != IFS_FS_OK ||
+            mapped_count != 1u || mapped[0].logical_offset != 0u ||
+            mapped[0].physical_offset != BLOCK_SIZE * 7u ||
+            mapped[0].length != BLOCK_SIZE ||
+            defrag->map(mounted, "/hello", 1u, mapped, 2u,
+                        &mapped_count) != IFS_FS_END ||
+            mapped_count != 0u)
+            return fail("Native V2 EXT2 map reports incorrect physical extents");
         if (core->write(mounted, "/hello", 0u, "X", 1u) != IFS_FS_ACCESS ||
             core->create != NULL || core->truncate != NULL ||
             disk.writes != 0u)

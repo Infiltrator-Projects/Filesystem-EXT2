@@ -105,6 +105,11 @@ IfsExt2Status ifs_ext2_read_inode(
     IfsExt2Inode *inode,
     void *scratch,
     ifs_ext2_u32 scratch_size);
+/* Check that the physical block belongs to an allocated file data region,
+ * not an inode table, bitmap, GDT or free extent. Shared by write and map. */
+IfsExt2Status ifs_ext2_validate_allocated_data_block(
+    const IfsExt2Volume *volume, ifs_ext2_u64 physical,
+    void *scratch, ifs_ext2_u32 scratch_size);
 IfsExt2Status ifs_ext2_map_file_block(
     const IfsExt2Volume *volume,
     const IfsExt2Inode *inode,
