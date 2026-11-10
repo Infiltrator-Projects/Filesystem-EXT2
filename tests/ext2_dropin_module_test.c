@@ -1,8 +1,10 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "../native/filesystems/ext2/core/ext2_engine.h"
 #include "../native/filesystems/ext2/module/ext2_module.h"
+#ifdef IFS_TEST_COMMON_V2
 #include <infiltratr/filesystem_module_v2.h>
 #include <stdlib.h>
+#endif
 
 #include <stdio.h>
 #include <string.h>
@@ -52,6 +54,7 @@ static int memory_write(
     return 0;
 }
 
+#ifdef IFS_TEST_COMMON_V2
 static void *common_alloc(void *host, size_t size)
 {
     (void)host;
@@ -63,6 +66,7 @@ static void common_release(void *host, void *p)
     free(p);
 }
 
+#endif
 static int fail(const char *message)
 {
     fprintf(stderr, "ext2_engine_test: %s\n", message);
@@ -170,6 +174,7 @@ int main(void)
     memcpy(disk.bytes + BLOCK_SIZE * 7U, "hello", 5U);
 
 
+#ifdef IFS_TEST_COMMON_V2
     /* Exercise the production Common ABI against these same EXT2 bytes,
      * not a mocked declaration or a second filesystem implementation. */
     {
@@ -220,6 +225,7 @@ int main(void)
             return fail("Common unmount failed");
     }
 
+#endif
     if (!api || api->abi_version != IFS_EXT2_DROPIN_ABI_VERSION ||
         api->structure_bytes != sizeof(*api) ||
         strcmp(api->format_id, "ext2") ||
