@@ -39,10 +39,8 @@ int ifs_ext_fixture_run(const void *, const char *, int, const void *);
  * This check happens before binding callbacks or performing any I/O. */
 static int owns_fixture(const LdtmFilesystemSpec *spec) {
     return spec && spec->key &&
-           strcmp(spec->key, IFS_EXT_FORMAT_ID) == 0 &&
-           ((spec->creator == LDTM_CREATOR_EXT2 && strcmp(IFS_EXT_FORMAT_ID, "ext2") == 0) ||
-            (spec->creator == LDTM_CREATOR_EXT3 && strcmp(IFS_EXT_FORMAT_ID, "ext3") == 0) ||
-            (spec->creator == LDTM_CREATOR_EXT4 && strcmp(IFS_EXT_FORMAT_ID, "ext4") == 0));
+           strcmp(spec->key, "ext2") == 0 &&
+           spec->creator == LDTM_CREATOR_EXT2;
 }
 static int fixture(const void *spec, const char *path, int create,
                    const IfsDefragServicesV1 *services,
