@@ -190,7 +190,7 @@ int main(void)
      * mutable EXT2 image used below by the private canonical engine. */
     {
         const IfsFsModuleApiV2 *v2 = infiltrator_filesystem_api_v2();
-        const IfsFsCoreOpsV1 *core;
+        const IfsFsCoreOpsV2 *core;
         const IfsFsHostRuntimeV2 host = {
             .abi_version = IFS_FS_HOST_ABI_V2,
             .structure_bytes = sizeof(IfsFsHostRuntimeV2),
@@ -213,11 +213,10 @@ int main(void)
         void *mounted = NULL;
         unsigned int variant = 0u;
 
-        if (!ifs_fs_api_v2_native_valid(v2, "ext2") ||
-            v2->base_v1 != NULL ||
+        if (!ifs_fs_api_v2_valid(v2, "ext2") ||
             v2->runtime_profiles != IFS_FS_PROFILE_HOSTED)
             return fail("Native V2-only EXT2 descriptor invalid");
-        core = (const IfsFsCoreOpsV1 *)ifs_fs_group_v2(
+        core = (const IfsFsCoreOpsV2 *)ifs_fs_group_v2(
             v2, IFS_FS_GROUP_CORE);
         if (!core ||
             (core->header.capabilities & (IFS_FS_CORE_PROBE |

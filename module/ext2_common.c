@@ -354,7 +354,7 @@ static int write_file(void *v, const char *path, uint64_t pos,
 
 /* Advertise no create/remove/resize/repair/format until the canonical
  * EXT2 implementation actually supplies independently tested operations. */
-static int volume_query(void *mounted, IfsFsVolumeInfoV1 *out)
+static int volume_query(void *mounted, IfsFsVolumeInfoV2 *out)
 {
     CommonVolume *v = (CommonVolume *)mounted;
     if (!valid(v) || !out || out->structure_bytes < sizeof(*out))
@@ -374,8 +374,8 @@ static int volume_sync(void *mounted)
     return v->host.flush && v->host.flush(v->host.context) == 0 ?
         IFS_FS_OK : IFS_FS_IO_ERROR;
 }
-static const IfsFsVolumeOpsV1 volume_group = {
-    .header = { IFS_FS_GROUP_ABI_V1, sizeof(IfsFsVolumeOpsV1),
+static const IfsFsVolumeOpsV2 volume_group = {
+    .header = { IFS_FS_GROUP_ABI_V2, sizeof(IfsFsVolumeOpsV2),
         IFS_FS_GROUP_VOLUME, 0u, IFS_FS_VOLUME_QUERY | IFS_FS_VOLUME_SYNC },
     .query = volume_query,
     .sync = volume_sync
@@ -383,8 +383,8 @@ static const IfsFsVolumeOpsV1 volume_group = {
 /* V2 CORE directly owns the implemented production read/write and namespace
  * operations. Missing allocate/create/repair/format callbacks are deliberate
  * capability denials rather than successful placeholders. */
-static const IfsFsCoreOpsV1 core_group = {
-    .header = {IFS_FS_GROUP_ABI_V1, sizeof(IfsFsCoreOpsV1),
+static const IfsFsCoreOpsV2 core_group = {
+    .header = {IFS_FS_GROUP_ABI_V2, sizeof(IfsFsCoreOpsV2),
         IFS_FS_GROUP_CORE, 0u,
         IFS_FS_CORE_PROBE | IFS_FS_CORE_MOUNT |
         IFS_FS_CORE_STAT | IFS_FS_CORE_LIST |
@@ -401,7 +401,7 @@ static const IfsFsGroupHeaderV2 *query_group(uint32_t group,
                                               uint32_t minimum,
                                               uint32_t maximum)
 {
-    if (minimum > IFS_FS_GROUP_ABI_V1 || maximum < IFS_FS_GROUP_ABI_V1)
+    if (minimum > IFS_FS_GROUP_ABI_V2 || maximum < IFS_FS_GROUP_ABI_V2)
         return NULL;
     if (group == IFS_FS_GROUP_CORE) return &core_group.header;
     if (group == IFS_FS_GROUP_VOLUME) return &volume_group.header;
@@ -414,7 +414,6 @@ static const IfsFsModuleApiV2 common_v2 = {
     .runtime_profiles = IFS_FS_PROFILE_HOSTED,
     .group_mask = IFS_FS_GROUP_BIT(IFS_FS_GROUP_CORE) |
                   IFS_FS_GROUP_BIT(IFS_FS_GROUP_VOLUME),
-    .base_v1 = NULL,
     .query_group = query_group
 };
 

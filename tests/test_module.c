@@ -5,14 +5,14 @@ extern const IfsFsModuleApiV2 *infiltrator_filesystem_api_v2(void);
 int main(void)
 {
     const IfsFsModuleApiV2 *m = infiltrator_filesystem_api_v2();
-    if (!ifs_fs_api_v2_native_valid(m, "ext2") || m->base_v1 ||
+    if (!ifs_fs_api_v2_valid(m, "ext2") ||
         m->group_mask != (IFS_FS_GROUP_BIT(IFS_FS_GROUP_CORE) |
                           IFS_FS_GROUP_BIT(IFS_FS_GROUP_VOLUME))) {
         fputs("EXT2 is not a genuine native V2-only provider\n", stderr);
         return 1;
     }
-    const IfsFsCoreOpsV1 *core =
-        (const IfsFsCoreOpsV1 *)ifs_fs_group_v2(m, IFS_FS_GROUP_CORE);
+    const IfsFsCoreOpsV2 *core =
+        (const IfsFsCoreOpsV2 *)ifs_fs_group_v2(m, IFS_FS_GROUP_CORE);
     if (!core || !core->probe || !core->mount || !core->unmount ||
         !core->stat || !core->directory_entry || !core->read ||
         !core->write || core->create || core->truncate || core->remove)
