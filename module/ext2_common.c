@@ -22,14 +22,69 @@ static int io_usable(const IfsFsHostRuntimeV2 *h)
     return ifs_fs_host_v2_valid(h) && h->volume_bytes >= 2048u;
 }
 
-static IfsExt2DropInIo native_io(const IfsFsHostRuntimeV2 *h)
+/* The host's maximum transfer is part of the Common V2 contract. The
+ * native engine may request a whole metadata block: split that request into
+ * bounded, partition-relative I/O without introducing an extra parser. */
+static int host_read(void *context, uint64_t offset, void *destination,
+                     uint32_t bytes)
+{
+    CommonVolume *v = context;
+    const IfsFsHostRuntimeV2 *h = &v->host;
+    uint8_t *out = destination;
+    if (!h->read_at || (!out && bytes) ||
+        offset > h->volume_bytes || bytes > h->volume_bytes - offset)
+        return -1;
+    while (bytes) {
+        uint32_t chunk = bytes;
+        if (chunk > h->maximum_transfer_bytes)
+            chunk = h->maximum_transfer_bytes;
+        if (h->read_at(h->context, offset, out, chunk) != 0)
+            return -1;
+        offset += chunk;
+        out += chunk;
+        bytes -= chunk;
+    }
+    return 0;
+}
+
+static int host_write(void *context, uint64_t offset, const void *source,
+                      uint32_t bytes)
+{
+    CommonVolume *v = context;
+    const IfsFsHostRuntimeV2 *h = &v->host;
+    const uint8_t *in = source;
+    if (!h->write_at || (!in && bytes) ||
+        offset > h->volume_bytes || bytes > h->volume_bytes - offset)
+        return -1;
+    while (bytes) {
+        uint32_t chunk = bytes;
+        if (chunk > h->maximum_transfer_bytes)
+            chunk = h->maximum_transfer_bytes;
+        if (h->write_at(h->context, offset, in, chunk) != 0)
+            return -1;
+        offset += chunk;
+        in += chunk;
+        bytes -= chunk;
+    }
+    return 0;
+}
+
+static int host_flush(void *context)
+{
+    CommonVolume *v = context;
+    return v->host.flush ? v->host.flush(v->host.context) : -1;
+}
+
+static IfsExt2DropInIo native_io(CommonVolume *v)
 {
     IfsExt2DropInIo io = {0};
-    io.device.read_at = h->read_at;
-    io.device.write_at = h->write_at;
-    io.device.flush = h->flush;
-    io.device.user = h->context;
-    io.volume_bytes = h->volume_bytes;
+    io.device.read_at = host_read;
+    io.device.write_at =
+        (v->host.capabilities & IFS_FS_HOST_READ_ONLY) ? NULL : host_write;
+    io.device.flush =
+        (v->host.capabilities & IFS_FS_HOST_READ_ONLY) ? NULL : host_flush;
+    io.device.user = v;
+    io.volume_bytes = v->host.volume_bytes;
     return io;
 }
 
@@ -41,13 +96,14 @@ static int status(IfsExt2Status s)
 /* No format sniffing in a consumer: the real EXT2 engine validates media. */
 static int probe(const IfsFsHostRuntimeV2 *h, uint32_t *variant)
 {
-    IfsExt2DropInVolume media = {0};
+    CommonVolume v = {0};
     IfsExt2DropInIo io;
     if (!io_usable(h) || !variant) return IFS_FS_INVALID;
-    io = native_io(h);
-    if (engine()->mount(&media, &io, 0) != IFS_EXT2_OK)
+    v.host = *h;
+    io = native_io(&v);
+    if (engine()->mount(&v.media, &io, 0) != IFS_EXT2_OK)
         return IFS_FS_NOT_FOUND;
-    media.mounted = 0u;
+    v.media.mounted = 0u;
     *variant = 2u;
     return IFS_FS_OK;
 }
@@ -66,7 +122,7 @@ static int mount(const IfsFsHostRuntimeV2 *h, void **out,
     if (!v) return IFS_FS_NO_MEMORY;
     memset(v, 0, sizeof(*v));
     v->host = *h;
-    io = native_io(&v->host);
+    io = native_io(v);
     allow_write = !(h->capabilities & IFS_FS_HOST_READ_ONLY) &&
         (h->capabilities & IFS_FS_HOST_EXCLUSIVE) && h->write_at && h->flush;
     if (engine()->mount(&v->media, &io, allow_write) != IFS_EXT2_OK) {
@@ -85,7 +141,7 @@ static int mount(const IfsFsHostRuntimeV2 *h, void **out,
 static int valid(const CommonVolume *v)
 {
     return v && v->media.mounted && v->host.read_at &&
-        v->media.host.device.user == v->host.context;
+        v->media.host.device.user == v;
 }
 
 static int unmount(void *volume)
