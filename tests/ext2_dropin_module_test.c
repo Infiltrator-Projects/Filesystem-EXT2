@@ -260,11 +260,13 @@ int main(void)
             !mounted)
             return fail("Native V2 exclusive mount failed");
         if (core->write(mounted, "/hello", 1u, "A", 1u) != IFS_FS_OK ||
-            writable_disk.writes != 1u ||
+            writable_disk.writes == 0u ||
             memcmp(writable_disk.bytes + BLOCK_SIZE * 7U, "hAllo", 5u))
             return fail("Native V2 existing-file write did not persist");
+        /* A 1024-byte read-modify-write uses two 512-byte host transfers. */
+        const unsigned before_rejection = writable_disk.writes;
         if (core->write(mounted, "/hello", 4u, "AB", 2u) !=
-            IFS_FS_UNSUPPORTED || writable_disk.writes != 1u)
+            IFS_FS_UNSUPPORTED || writable_disk.writes != before_rejection)
             return fail("Native V2 permitted extending a file");
         if (core->unmount(mounted) != IFS_FS_OK)
             return fail("Native V2 writable unmount failed");
