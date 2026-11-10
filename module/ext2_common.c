@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
- * Common V1 and V2 adapter to the canonical, freestanding EXT2 engine.
- * Never import POSIX block I/O or a second EXT2 implementation.
+ * Native Common V2-only adapter to the canonical, freestanding EXT2 engine.
+ * No legacy provider descriptor, alternate parser or POSIX device handles.
  */
 #include <infiltratr/filesystem_module_v2.h>
 #include "../native/filesystems/ext2/module/ext2_module.h"
@@ -8,23 +8,21 @@
 #include <string.h>
 
 typedef struct {
-    IfsFsHostIoV1 host;
+    IfsFsHostRuntimeV2 host;
     IfsExt2DropInVolume media;
 } CommonVolume;
 
-static const IfsExt2DropInModule *engine(void)
+static const IfsExt2NativeOps *engine(void)
 {
-    return infiltrator_filesystem_module_v1();
+    return ifs_ext2_native_operations();
 }
 
-static int io_usable(const IfsFsHostIoV1 *h)
+static int io_usable(const IfsFsHostRuntimeV2 *h)
 {
-    return h && h->structure_bytes >= sizeof(*h) && h->read_at &&
-        h->volume_bytes >= 2048u &&
-        !(h->flags & ~(IFS_FS_IO_READ_ONLY | IFS_FS_IO_EXCLUSIVE));
+    return ifs_fs_host_v2_valid(h) && h->volume_bytes >= 2048u;
 }
 
-static IfsExt2DropInIo native_io(const IfsFsHostIoV1 *h)
+static IfsExt2DropInIo native_io(const IfsFsHostRuntimeV2 *h)
 {
     IfsExt2DropInIo io = {0};
     io.device.read_at = h->read_at;
@@ -41,7 +39,7 @@ static int status(IfsExt2Status s)
 }
 
 /* No format sniffing in a consumer: the real EXT2 engine validates media. */
-static int probe(const IfsFsHostIoV1 *h, uint32_t *variant)
+static int probe(const IfsFsHostRuntimeV2 *h, uint32_t *variant)
 {
     IfsExt2DropInVolume media = {0};
     IfsExt2DropInIo io;
@@ -54,8 +52,8 @@ static int probe(const IfsFsHostIoV1 *h, uint32_t *variant)
     return IFS_FS_OK;
 }
 
-static int mount(const IfsFsHostIoV1 *h, void **out,
-                 IfsFsVolumeInfoV1 *info)
+static int mount(const IfsFsHostRuntimeV2 *h, void **out,
+                 IfsFsVolumeInfoV2 *info)
 {
     CommonVolume *v;
     IfsExt2DropInIo io;
@@ -69,8 +67,8 @@ static int mount(const IfsFsHostIoV1 *h, void **out,
     memset(v, 0, sizeof(*v));
     v->host = *h;
     io = native_io(&v->host);
-    allow_write = !(h->flags & IFS_FS_IO_READ_ONLY) &&
-        (h->flags & IFS_FS_IO_EXCLUSIVE) && h->write_at && h->flush;
+    allow_write = !(h->capabilities & IFS_FS_HOST_READ_ONLY) &&
+        (h->capabilities & IFS_FS_HOST_EXCLUSIVE) && h->write_at && h->flush;
     if (engine()->mount(&v->media, &io, allow_write) != IFS_EXT2_OK) {
         h->release(h->context, v);
         return IFS_FS_CORRUPT;
@@ -93,7 +91,7 @@ static int valid(const CommonVolume *v)
 static int unmount(void *volume)
 {
     CommonVolume *v = (CommonVolume *)volume;
-    IfsFsHostIoV1 h;
+    IfsFsHostRuntimeV2 h;
     if (!valid(v)) return IFS_FS_INVALID;
     h = v->host;
     v->media.mounted = 0u;
@@ -151,7 +149,7 @@ static int resolve(CommonVolume *v, const char *path,
     return IFS_FS_OK;
 }
 
-static int fill(IfsFsEntryV1 *entry, const IfsExt2Inode *inode,
+static int fill(IfsFsEntryV2 *entry, const IfsExt2Inode *inode,
                 const char *name, uint32_t name_bytes)
 {
     IfsExt2NodeType t;
@@ -173,7 +171,7 @@ static int fill(IfsFsEntryV1 *entry, const IfsExt2Inode *inode,
     return IFS_FS_OK;
 }
 
-static int stat_path(void *volume, const char *path, IfsFsEntryV1 *entry)
+static int stat_path(void *volume, const char *path, IfsFsEntryV2 *entry)
 {
     CommonVolume *v = (CommonVolume *)volume;
     IfsExt2Inode inode;
@@ -192,7 +190,7 @@ static int stat_path(void *volume, const char *path, IfsFsEntryV1 *entry)
 
 typedef struct {
     CommonVolume *volume;
-    IfsFsEntryV1 *entry;
+    IfsFsEntryV2 *entry;
     uint32_t skip, current;
     void *lookup_scratch;
     int result;
@@ -220,7 +218,7 @@ static int enumerate_callback(void *opaque, ifs_ext2_u32 number,
 }
 
 static int directory_entry(void *volume, const char *path,
-                           uint32_t index, IfsFsEntryV1 *entry)
+                           uint32_t index, IfsFsEntryV2 *entry)
 {
     CommonVolume *v = (CommonVolume *)volume;
     IfsExt2Inode parent;
@@ -300,25 +298,6 @@ static int write_file(void *v, const char *path, uint64_t pos,
 
 /* Advertise no create/remove/resize/repair/format until the canonical
  * EXT2 implementation actually supplies independently tested operations. */
-static const IfsFsModuleApiV1 common_v1 = {
-    .abi_version = IFS_FS_COMMON_ABI_V1,
-    .structure_bytes = sizeof(IfsFsModuleApiV1),
-    .format_id = "ext2",
-    .capabilities = IFS_FS_CAP_PROBE | IFS_FS_CAP_MOUNT |
-        IFS_FS_CAP_LIST | IFS_FS_CAP_READ | IFS_FS_CAP_WRITE,
-    .probe = probe,
-    .mount = mount,
-    .unmount = unmount,
-    .stat = stat_path,
-    .directory_entry = directory_entry,
-    .read = read_file,
-    .write = write_file
-};
-__attribute__((visibility("default")))
-const IfsFsModuleApiV1 *infiltrator_filesystem_api_v1(void)
-{
-    return &common_v1;
-}
 static int volume_query(void *mounted, IfsFsVolumeInfoV1 *out)
 {
     CommonVolume *v = (CommonVolume *)mounted;
@@ -345,19 +324,44 @@ static const IfsFsVolumeOpsV1 volume_group = {
     .query = volume_query,
     .sync = volume_sync
 };
+/* V2 CORE directly owns the implemented production read/write and namespace
+ * operations. Missing allocate/create/repair/format callbacks are deliberate
+ * capability denials rather than successful placeholders. */
+static const IfsFsCoreOpsV1 core_group = {
+    .header = {IFS_FS_GROUP_ABI_V1, sizeof(IfsFsCoreOpsV1),
+        IFS_FS_GROUP_CORE, 0u,
+        IFS_FS_CORE_PROBE | IFS_FS_CORE_MOUNT |
+        IFS_FS_CORE_STAT | IFS_FS_CORE_LIST |
+        IFS_FS_CORE_READ | IFS_FS_CORE_WRITE},
+    .probe = probe,
+    .mount = mount,
+    .unmount = unmount,
+    .stat = stat_path,
+    .directory_entry = directory_entry,
+    .read = read_file,
+    .write = write_file
+};
 static const IfsFsGroupHeaderV2 *query_group(uint32_t group,
-                                             uint32_t minimum,
-                                             uint32_t maximum)
+                                              uint32_t minimum,
+                                              uint32_t maximum)
 {
-    return group == IFS_FS_GROUP_VOLUME &&
-        minimum <= IFS_FS_GROUP_ABI_V1 &&
-        maximum >= IFS_FS_GROUP_ABI_V1 ? &volume_group.header : NULL;
+    if (minimum > IFS_FS_GROUP_ABI_V1 || maximum < IFS_FS_GROUP_ABI_V1)
+        return NULL;
+    if (group == IFS_FS_GROUP_CORE) return &core_group.header;
+    if (group == IFS_FS_GROUP_VOLUME) return &volume_group.header;
+    return NULL;
 }
 static const IfsFsModuleApiV2 common_v2 = {
-    IFS_FS_COMMON_ABI_V2, sizeof(IfsFsModuleApiV2), "ext2",
-    IFS_FS_PROFILE_HOSTED, IFS_FS_GROUP_BIT(IFS_FS_GROUP_VOLUME),
-    &common_v1, query_group
+    .abi_version = IFS_FS_COMMON_ABI_V2,
+    .structure_bytes = sizeof(IfsFsModuleApiV2),
+    .format_id = "ext2",
+    .runtime_profiles = IFS_FS_PROFILE_HOSTED,
+    .group_mask = IFS_FS_GROUP_BIT(IFS_FS_GROUP_CORE) |
+                  IFS_FS_GROUP_BIT(IFS_FS_GROUP_VOLUME),
+    .base_v1 = NULL,
+    .query_group = query_group
 };
+
 __attribute__((visibility("default")))
 const IfsFsModuleApiV2 *infiltrator_filesystem_api_v2(void)
 {

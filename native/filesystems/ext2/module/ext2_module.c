@@ -171,22 +171,14 @@ static IfsExt2Status module_write_existing(
     return IFS_EXT2_OK;
 }
 
-__attribute__((used, section(".ifsmeta")))
-static const char module_identity[] = "IFS-MODULE:ext2:1";
-
-static const IfsExt2DropInModule module = {
-    IFS_EXT2_DROPIN_ABI_VERSION,
-    sizeof(IfsExt2DropInModule),
-    "ext2", "Second Extended File System",
-    IFS_EXT2_CAP_MOUNT | IFS_EXT2_CAP_LOOKUP |
-    IFS_EXT2_CAP_ENUMERATE | IFS_EXT2_CAP_FILE_READ |
-    IFS_EXT2_CAP_WRITE_EXISTING,
+/* Native engine operations are private to EXT2.so, not an independent
+ * exported/negotiated filesystem ABI. Common V2 is the only public ABI. */
+static const IfsExt2NativeOps module = {
     module_mount, module_root, module_lookup, module_enumerate,
     module_read, module_write_existing
 };
 
-__attribute__((visibility("default")))
-const IfsExt2DropInModule *infiltrator_filesystem_module_v1(void)
+const IfsExt2NativeOps *ifs_ext2_native_operations(void)
 {
     return &module;
 }
