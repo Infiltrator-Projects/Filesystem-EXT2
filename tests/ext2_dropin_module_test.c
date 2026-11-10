@@ -3,7 +3,6 @@
 #include "../native/filesystems/ext2/module/ext2_module.h"
 #ifdef IFS_TEST_COMMON_V2
 #include <infiltratr/filesystem_module_v2.h>
-extern const IfsFsModuleApiV1 *infiltrator_filesystem_api_v1(void);
 extern const IfsFsModuleApiV2 *infiltrator_filesystem_api_v2(void);
 #include <stdlib.h>
 #endif
@@ -111,7 +110,7 @@ int main(void)
     MemoryDisk disk;
     IfsExt2DropInVolume volume;
     IfsExt2DropInIo io;
-    const IfsExt2DropInModule *api = infiltrator_filesystem_module_v1();
+    const IfsExt2NativeOps *api = ifs_ext2_native_operations();
     IfsExt2Inode inode;
     unsigned char scratch[BLOCK_SIZE];
     unsigned char data[16] = {0};
@@ -177,62 +176,72 @@ int main(void)
 
 
 #ifdef IFS_TEST_COMMON_V2
-    /* Exercise the production Common ABI against these same EXT2 bytes,
-     * not a mocked declaration or a second filesystem implementation. */
+    /* The actual V2 entry point is tested against the same validated,
+     * mutable EXT2 image used below by the private canonical engine. */
     {
-        const IfsFsModuleApiV1 *common = infiltrator_filesystem_api_v1();
-        const IfsFsModuleApiV2 *extension = infiltrator_filesystem_api_v2();
-        IfsFsHostIoV1 host = {0};
-        IfsFsVolumeInfoV1 details = {0};
-        IfsFsEntryV1 entry = {0};
+        const IfsFsModuleApiV2 *v2 = infiltrator_filesystem_api_v2();
+        const IfsFsCoreOpsV1 *core;
+        const IfsFsHostRuntimeV2 host = {
+            .abi_version = IFS_FS_HOST_ABI_V2,
+            .structure_bytes = sizeof(IfsFsHostRuntimeV2),
+            .capabilities = IFS_FS_HOST_READ_ONLY,
+            .volume_bytes = sizeof disk.bytes,
+            .logical_sector_bytes = 512u,
+            .physical_sector_bytes = 512u,
+            .maximum_transfer_bytes = BLOCK_SIZE,
+            .context = &disk,
+            .read_at = memory_read,
+            .allocate = common_alloc,
+            .release = common_release
+        };
+        IfsFsVolumeInfoV2 details = {.structure_bytes = sizeof(IfsFsVolumeInfoV2)};
         char name[256], content[6] = {0};
+        IfsFsEntryV2 entry = {
+            .structure_bytes = sizeof(IfsFsEntryV2),
+            .name = name, .name_capacity = sizeof name
+        };
         void *mounted = NULL;
         unsigned int variant = 0u;
 
-        host.structure_bytes = sizeof host;
-        host.flags = IFS_FS_IO_READ_ONLY;
-        host.context = &disk;
-        host.volume_bytes = sizeof disk.bytes;
-        host.read_at = memory_read;
-        host.allocate = common_alloc;
-        host.release = common_release;
-        details.structure_bytes = sizeof details;
-        entry.structure_bytes = sizeof entry;
-        entry.name = name;
-        entry.name_capacity = sizeof name;
-        if (!ifs_fs_common_api_valid(common, "ext2") ||
-            !ifs_fs_api_v2_valid(extension, "ext2") ||
-            extension->base_v1 != common ||
-            (extension->runtime_profiles & IFS_FS_PROFILE_KERNEL) != 0u ||
-            !ifs_fs_group_v2(extension, IFS_FS_GROUP_VOLUME))
-            return fail("Common V1/V2 descriptor invalid");
-        if (common->probe(&host, &variant) != IFS_FS_OK || variant != 2u ||
-            common->mount(&host, &mounted, &details) != IFS_FS_OK ||
+        if (!ifs_fs_api_v2_native_valid(v2, "ext2") ||
+            v2->base_v1 != NULL ||
+            v2->runtime_profiles != IFS_FS_PROFILE_HOSTED)
+            return fail("Native V2-only EXT2 descriptor invalid");
+        core = (const IfsFsCoreOpsV1 *)ifs_fs_group_v2(
+            v2, IFS_FS_GROUP_CORE);
+        if (!core ||
+            (core->header.capabilities & (IFS_FS_CORE_PROBE |
+                IFS_FS_CORE_MOUNT | IFS_FS_CORE_STAT |
+                IFS_FS_CORE_LIST | IFS_FS_CORE_READ | IFS_FS_CORE_WRITE)) !=
+                (IFS_FS_CORE_PROBE | IFS_FS_CORE_MOUNT |
+                 IFS_FS_CORE_STAT | IFS_FS_CORE_LIST |
+                 IFS_FS_CORE_READ | IFS_FS_CORE_WRITE))
+            return fail("Native V2 CORE is missing real operations");
+        if (core->probe(&host, &variant) != IFS_FS_OK || variant != 2u ||
+            core->mount(&host, &mounted, &details) != IFS_FS_OK ||
             !mounted || details.block_bytes != BLOCK_SIZE ||
             details.total_bytes != sizeof disk.bytes)
-            return fail("Common probe or mount rejected real EXT2 media");
-        if (common->stat(mounted, "/hello", &entry) != IFS_FS_OK ||
+            return fail("Native V2 probe/mount rejected genuine EXT2 media");
+        if (core->stat(mounted, "/hello", &entry) != IFS_FS_OK ||
             strcmp(name, "hello") || entry.size_bytes != 5u ||
-            common->directory_entry(mounted, "/", 0u, &entry) != IFS_FS_OK ||
+            core->directory_entry(mounted, "/", 0u, &entry) != IFS_FS_OK ||
             strcmp(name, "hello") ||
-            common->directory_entry(mounted, "/", 1u, &entry) != IFS_FS_END ||
-            common->read(mounted, "/hello", 0u, content, 5u) != IFS_FS_OK ||
-            memcmp(content, "hello", 5u) != 0)
-            return fail("Common stat, directory or read differs from EXT2 engine");
-        if (common->write(mounted, "/hello", 0u, "X", 1u) != IFS_FS_ACCESS ||
-            common->create != NULL || common->format != NULL ||
-            common->recover != NULL || disk.writes != 0u)
-            return fail("Common read-only mount or capability safety violated");
-        if (common->unmount(mounted) != IFS_FS_OK)
-            return fail("Common unmount failed");
+            core->directory_entry(mounted, "/", 1u, &entry) != IFS_FS_END ||
+            core->read(mounted, "/hello", 0u, content, 5u) != IFS_FS_OK ||
+            memcmp(content, "hello", 5u))
+            return fail("Native V2 EXT2 stat/list/read is incorrect");
+        if (core->write(mounted, "/hello", 0u, "X", 1u) != IFS_FS_ACCESS ||
+            core->create != NULL || core->truncate != NULL ||
+            disk.writes != 0u)
+            return fail("Native V2 mount violated read-only policy");
+        if (core->unmount(mounted) != IFS_FS_OK)
+            return fail("Native V2 unmount failed");
     }
 
 #endif
-    if (!api || api->abi_version != IFS_EXT2_DROPIN_ABI_VERSION ||
-        api->structure_bytes != sizeof(*api) ||
-        strcmp(api->format_id, "ext2") ||
-        (api->capabilities & IFS_EXT2_CAP_WRITE_EXISTING) == 0U)
-        return fail("incorrect EXT2.so ABI or capability table");
+    if (!api || !api->mount || !api->root || !api->lookup ||
+        !api->enumerate || !api->read || !api->write_existing)
+        return fail("private EXT2 engine has incomplete operations");
 
     memset(&volume, 0, sizeof(volume));
     io.device.read_at = memory_read;
