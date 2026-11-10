@@ -70,6 +70,7 @@ foreach(kind IN ITEMS ext2)
     "${CMAKE_CURRENT_SOURCE_DIR}/native/filesystems/ext2/core"
     "${CMAKE_CURRENT_SOURCE_DIR}/native/filesystems/ext2/module")
   target_compile_options(ext2-dropin-module-test PRIVATE -Wall -Wextra -Wpedantic -Werror -UNDEBUG)
+  target_compile_definitions(ext2-dropin-module-test PRIVATE IFS_TEST_COMMON_V2=1)
   target_link_libraries(ext2-dropin-module-test PRIVATE ext-${kind}-driver InfiltratrCommon::Common)
   add_test(NAME ext2-dropin-module-contract COMMAND ext2-dropin-module-test)
  endif()
