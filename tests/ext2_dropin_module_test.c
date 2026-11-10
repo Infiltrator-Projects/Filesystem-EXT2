@@ -3,6 +3,8 @@
 #include "../native/filesystems/ext2/module/ext2_module.h"
 #ifdef IFS_TEST_COMMON_V2
 #include <infiltratr/filesystem_module_v2.h>
+extern const IfsFsModuleApiV1 *infiltrator_filesystem_api_v1(void);
+extern const IfsFsModuleApiV2 *infiltrator_filesystem_api_v2(void);
 #include <stdlib.h>
 #endif
 
