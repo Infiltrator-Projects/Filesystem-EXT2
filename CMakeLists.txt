@@ -61,7 +61,7 @@ target_link_libraries(ext-core PUBLIC InfiltratrCommon::Common OpenSSL::Crypto S
   add_executable(ext-ext2-module-test tests/test_module.c)
   target_compile_definitions(ext-ext2-module-test PRIVATE IFS_EXT_FORMAT_ID="ext2")
   target_include_directories(ext-ext2-module-test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include" "${CMAKE_CURRENT_SOURCE_DIR}/compat")
-  target_link_libraries(ext-ext2-module-test PRIVATE ext-ext2-driver)
+  target_link_libraries(ext-ext2-module-test PRIVATE ext-ext2-driver InfiltratrCommon::Common)
   add_test(NAME ext-ext2-module-contract COMMAND ext-ext2-module-test)
   # Prove the original EXT2 drop-in read/write interface survives the
   # addition of the Test Media fixture and full EXT defrag interface.
@@ -115,7 +115,7 @@ if(BUILD_TESTING)
    "${CMAKE_CURRENT_SOURCE_DIR}/include"
    "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/include"
    "${CMAKE_CURRENT_SOURCE_DIR}/compat")
- target_link_libraries(ext2-cross-format-denial-test PRIVATE ext-ext2-driver)
+ target_link_libraries(ext2-cross-format-denial-test PRIVATE ext-ext2-driver InfiltratrCommon::Common)
  target_compile_options(ext2-cross-format-denial-test PRIVATE -Wall -Wextra -Wpedantic -Werror)
  add_test(NAME ext2-rejects-other-formats COMMAND ext2-cross-format-denial-test)
 endif()
