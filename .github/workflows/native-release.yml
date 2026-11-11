@@ -141,7 +141,7 @@ jobs:
           install -m 0644 kernel-qualified/*.deb dist/
           install -m 0644 kernel-qualified/*.ko dist/
           python3 standalone/check-package.py dist/*.deb --profile portable --kernel-release $NATIVE_RELEASE
-      - name: Publish and verify exact immutable EXT2 1.0.8 release
+      - name: Publish and verify exact immutable EXT2 release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
