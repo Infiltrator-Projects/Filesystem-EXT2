@@ -4,7 +4,7 @@ The independent `Filesystem-EXT2` repository owns the portable EXT2 core, shared
 
 ## Reconciliation
 
-The portable core, V1 `.so` adapter and design files already present in this repository were byte-identical to `Filesystems` main at `a253fb724ce1fd760a361219281effb6abd71367`. These were preserved rather than replaced with duplicate or older copies.
+The portable core, original `.so` adapter and design files already present in this repository were byte-identical to `Filesystems` main at `a253fb724ce1fd760a361219281effb6abd71367`. These were preserved rather than replaced with duplicate or older copies.
 
 The remaining `native/filesystems/ext2/{linux,efi,windows}/` source files were copied from that same central main commit, with their paths and notices preserved.
 
