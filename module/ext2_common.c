@@ -12,6 +12,17 @@ typedef struct {
     IfsExt2DropInVolume media;
 } CommonVolume;
 
+/* Snapshot only the V2 fields supplied by the host, including older
+ * callers that end before later optional extensions. */
+static void retain_host(IfsFsHostRuntimeV2 *dst, const IfsFsHostRuntimeV2 *src)
+{
+    const size_t bytes = src->structure_bytes < sizeof(*dst) ?
+        src->structure_bytes : sizeof(*dst);
+    memset(dst, 0, sizeof(*dst));
+    memcpy(dst, src, bytes);
+    dst->structure_bytes = (uint32_t)bytes;
+}
+
 static const IfsExt2NativeOps *engine(void)
 {
     return ifs_ext2_native_operations();
@@ -126,7 +137,7 @@ static int probe(const IfsFsHostRuntimeV2 *h, uint32_t *variant)
     CommonVolume v = {0};
     IfsExt2DropInIo io;
     if (!io_usable(h) || !variant) return IFS_FS_INVALID;
-    v.host = *h;
+    retain_host(&v.host, h);
     io = native_io(&v);
     if (engine()->mount(&v.media, &io, 0) != IFS_EXT2_OK)
         return IFS_FS_NOT_FOUND;
@@ -148,7 +159,7 @@ static int mount(const IfsFsHostRuntimeV2 *h, void **out,
     v = (CommonVolume *)h->allocate(h->context, sizeof(*v));
     if (!v) return IFS_FS_NO_MEMORY;
     memset(v, 0, sizeof(*v));
-    v->host = *h;
+    retain_host(&v->host, h);
     io = native_io(v);
     allow_write = !(h->capabilities & IFS_FS_HOST_READ_ONLY) &&
         (h->capabilities & IFS_FS_HOST_EXCLUSIVE) && h->write_at && h->flush;

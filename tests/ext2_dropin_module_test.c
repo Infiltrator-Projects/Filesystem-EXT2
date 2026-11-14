@@ -230,6 +230,18 @@ int main(void)
                  IFS_FS_CORE_STAT | IFS_FS_CORE_LIST |
                  IFS_FS_CORE_READ | IFS_FS_CORE_WRITE))
             return fail("Native V2 CORE is missing real operations");
+        volatile size_t short_bytes = IFS_FS_HOST_V2_BASE_BYTES;
+        IfsFsHostRuntimeV2 *short_host = malloc(short_bytes);
+        if (!short_host) return fail("Short V2 host allocation");
+        memcpy(short_host, &host, IFS_FS_HOST_V2_BASE_BYTES);
+        short_host->structure_bytes = IFS_FS_HOST_V2_BASE_BYTES;
+        if (core->probe(short_host, &variant) != IFS_FS_OK || variant != 2u ||
+            core->mount(short_host, &mounted, &details) != IFS_FS_OK ||
+            !mounted || core->unmount(mounted) != IFS_FS_OK)
+            return fail("Original short V2 host rejected");
+        free(short_host);
+        mounted = NULL;
+        details.structure_bytes = sizeof(details);
         if (core->probe(&host, &variant) != IFS_FS_OK || variant != 2u ||
             core->mount(&host, &mounted, &details) != IFS_FS_OK ||
             !mounted || details.block_bytes != BLOCK_SIZE ||
