@@ -52,7 +52,14 @@ jobs:
             readelf --dyn-syms -W "$work/build/firmware/EXT2.so"
             exit 1
           fi
-          "$validator" "$work/build/EXT2.so"
+          if ! "$validator" "$work/build/EXT2.so"; then
+            echo 'Unmodified BOOT validator rejected the hosted ELF carrier' >&2
+            readelf -hW "$work/build/EXT2.so"
+            readelf -SW "$work/build/EXT2.so"
+            readelf --dyn-syms -W "$work/build/EXT2.so"
+            readelf -dW "$work/build/EXT2.so"
+            exit 1
+          fi
           stage="$work/stage"
           DESTDIR="$stage" cmake --install "$work/build"
           cmp "$stage/System/Filesystems/EXT2.so" "$work/build/EXT2.so"
