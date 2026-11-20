@@ -43,7 +43,15 @@ jobs:
           test -s "$work/build/firmware/EXT2.so"
           readelf -SW "$work/build/EXT2.so" | grep -F '.infiltrator_boot'
           validator="$work/package/usr/lib/infiltrator-boot/validate-module"
-          "$validator" "$work/build/firmware/EXT2.so"
+          if ! "$validator" "$work/build/firmware/EXT2.so"; then
+            echo 'Unmodified BOOT validator rejected the freestanding ELF' >&2
+            readelf -hW "$work/build/firmware/EXT2.so"
+            readelf -lW "$work/build/firmware/EXT2.so"
+            readelf -dW "$work/build/firmware/EXT2.so"
+            readelf -rW "$work/build/firmware/EXT2.so"
+            readelf --dyn-syms -W "$work/build/firmware/EXT2.so"
+            exit 1
+          fi
           "$validator" "$work/build/EXT2.so"
           stage="$work/stage"
           DESTDIR="$stage" cmake --install "$work/build"
