@@ -1,0 +1,73 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+name: Qualify packaged EXT2 Common V2 BOOT reads
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ext2-boot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Install independent filesystem and virtual UEFI tooling
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake libssl-dev libsqlite3-dev cpio busybox-static \
+            e2fsprogs dosfstools gdisk mtools qemu-system-x86 ovmf
+      - name: Fetch SHA-256 verified production BOOT executable and validator
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/ext2-firmware"
+          mkdir -p "$work"
+          boot=infiltrator-boot_0.1.46_amd64.deb
+          curl -fsSL --retry 3 \
+            "https://github.com/Infiltrator-Projects/Boot/releases/download/v0.1.46/$boot" \
+            -o "$work/$boot"
+          printf '%s  %s\n' \
+            9ab605a5312a54741d4a002e1131823ef7e28a73957f6473bea88a9c64d10035 \
+            "$work/$boot" | sha256sum -c -
+          dpkg-deb -x "$work/$boot" "$work/package"
+      - name: Build one hosted EXT2.so containing the same freestanding V2 engine
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/ext2-firmware"
+          cmake -S . -B "$work/build" -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+          cmake --build "$work/build" --parallel 2
+          ctest --test-dir "$work/build" --output-on-failure
+          test -s "$work/build/EXT2.so"
+          test -s "$work/build/firmware/EXT2.so"
+          readelf -SW "$work/build/EXT2.so" | grep -F '.infiltrator_boot'
+          validator="$work/package/usr/lib/infiltrator-boot/validate-module"
+          "$validator" "$work/build/firmware/EXT2.so"
+          "$validator" "$work/build/EXT2.so"
+          stage="$work/stage"
+          DESTDIR="$stage" cmake --install "$work/build"
+          cmp "$stage/System/Filesystems/EXT2.so" "$work/build/EXT2.so"
+          "$validator" "$stage/System/Filesystems/EXT2.so"
+      - name: Load a genuine EFI-stub kernel and initramfs using the packaged module
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/ext2-firmware"
+          image=$(apt-cache depends linux-image-generic | awk '/Depends: linux-image-[0-9]/ { image=$2 } END { print image }')
+          test -n "$image"
+          (cd "$work" && apt-get download "linux-image-unsigned-${image#linux-image-}")
+          dpkg-deb -x "$work"/linux-image-unsigned-*.deb "$work/kernel"
+          kernel="$work/kernel/boot/vmlinuz-${image#linux-image-}"
+          test -s "$kernel"
+          boot="$work/package/usr/lib/infiltrator-boot/EFI/BOOT/BOOTX64.EFI"
+          module="$work/stage/System/Filesystems/EXT2.so"
+          bash tests/firmware-ext2.sh "$boot" "$module" "$kernel" "$work/vm"
+          bash tests/firmware-ext2.sh "$boot" "$module" "$kernel" "$work/bad-vm" bad-superblock
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: ext2-boot-ovmf-serial
+          path: |
+            ${{ runner.temp }}/ext2-firmware/vm/serial.log
+            ${{ runner.temp }}/ext2-firmware/bad-vm/serial.log
+          if-no-files-found: warn
