@@ -408,11 +408,13 @@ static int read_file(void *v, const char *path, uint64_t pos, void *b, uint32_t 
 {
     return file_io(v, path, pos, b, n, 0);
 }
+#if !defined(IFS_EXT2_FIRMWARE_BUILD)
 static int write_file(void *v, const char *path, uint64_t pos,
                       const void *b, uint32_t n)
 {
     return file_io(v, path, pos, (void *)b, n, 1);
 }
+#endif
 
 /* Expose the canonical EXT2 block map through Common V2. This is an
  * actual verified extent enumerator, not a relocation capability. No planner
