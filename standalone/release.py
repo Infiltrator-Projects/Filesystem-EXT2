@@ -224,7 +224,12 @@ def install(rest):
         parser.error("--build-only requires --output DIRECTORY")
     if opt.system_package_mode and opt.kernel_build:
         parser.error("--kernel-build applies to the manual installer")
-    kernel_target = None if opt.system_package_mode or kernel.SPEC is None else kernel.target(opt.kernel_build)
+    # Ordinary filesystem installs carry only the Common V2 SO and manual.
+    # Old kernel-adapter builds are preserved for explicitly requested,
+    # test-only migration work, never used as a boot or filesystem fallback.
+    kernel_target = (None if opt.system_package_mode or
+                     opt.kernel_build is None or kernel.SPEC is None
+                     else kernel.target(opt.kernel_build))
     version = VERSION + ("+native1" if opt.profile == "aggressive" else "")
     with tempfile.TemporaryDirectory(prefix=SLUG + "-install-") as tmp:
         output = ((opt.output if opt.build_only else Path(tmp)) / f"{PACKAGE}_{version}_amd64.deb").resolve()
