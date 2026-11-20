@@ -17,6 +17,27 @@ FetchContent_Declare(infiltratr_common
 FetchContent_MakeAvailable(infiltratr_common)
 # The embedded Common SDK is linked, not installed with filesystem runtime modules.
 set_property(DIRECTORY "${infiltratr_common_SOURCE_DIR}" PROPERTY EXCLUDE_FROM_ALL TRUE)
+# A real freestanding Common V2 reader is compiled from exactly the same
+# EXT2 sources as the hosted module; no EFI filesystem-specific adapter.
+# Embed its self-contained ELF byte-for-byte into the installed EXT2.so.
+set(EXT2_FIRMWARE_DIR "${CMAKE_CURRENT_BINARY_DIR}/firmware")
+set(EXT2_FIRMWARE_ELF "${EXT2_FIRMWARE_DIR}/EXT2.so")
+add_custom_command(OUTPUT "${EXT2_FIRMWARE_ELF}"
+ COMMAND "${CMAKE_COMMAND}" -S "${CMAKE_CURRENT_SOURCE_DIR}/module/firmware"
+  -B "${EXT2_FIRMWARE_DIR}" -DCMAKE_BUILD_TYPE=Release
+  "-DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}"
+  "-DCOMMON_INCLUDE_DIR=${infiltratr_common_SOURCE_DIR}/include"
+ COMMAND "${CMAKE_COMMAND}" --build "${EXT2_FIRMWARE_DIR}" --parallel 2
+ DEPENDS
+  module/firmware/CMakeLists.txt
+  module/firmware/runtime.c
+  module/ext2_common.c
+  native/filesystems/ext2/core/ext2_core.c
+  native/filesystems/ext2/core/ext2_engine.c
+  native/filesystems/ext2/module/ext2_module.c
+  "${infiltratr_common_SOURCE_DIR}/include/infiltratr/filesystem_module_v2.h"
+ VERBATIM)
+add_custom_target(ext2-firmware-elf DEPENDS "${EXT2_FIRMWARE_ELF}")
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/version.h" "#define LD_VERSION \"${PROJECT_VERSION}\"\n")
 set(EXT_SRC "${CMAKE_CURRENT_SOURCE_DIR}/migration/defragmenter/native")
 set_source_files_properties("${EXT_SRC}/ext_worker.c" PROPERTIES
@@ -50,6 +71,16 @@ target_link_libraries(ext-core PUBLIC InfiltratrCommon::Common OpenSSL::Crypto S
   native/filesystems/ext2/core/ext2_engine.c
   native/filesystems/ext2/module/ext2_module.c)
  set_target_properties(ext-ext2-driver PROPERTIES PREFIX "" OUTPUT_NAME "EXT2" SUFFIX ".so")
+ # Both installed .deb and native .run carry this one ELF carrier, not an
+ # alternate firmware-only package. No kernel driver or separate .so is shipped.
+ add_dependencies(ext-ext2-driver ext2-firmware-elf)
+ set_property(TARGET ext-ext2-driver APPEND PROPERTY LINK_DEPENDS "${EXT2_FIRMWARE_ELF}")
+ add_custom_command(TARGET ext-ext2-driver POST_BUILD
+  COMMAND "${CMAKE_OBJCOPY}" --add-section
+   ".infiltrator_boot=${EXT2_FIRMWARE_ELF}"
+   --set-section-flags .infiltrator_boot=readonly
+   "$<TARGET_FILE:ext-ext2-driver>"
+  VERBATIM)
  target_compile_definitions(ext-ext2-driver PRIVATE _GNU_SOURCE _FILE_OFFSET_BITS=64)
  target_compile_options(ext-ext2-driver PRIVATE -Wall -Wextra -Wpedantic -Werror)
  target_link_options(ext-ext2-driver PRIVATE -Wl,-z,defs)

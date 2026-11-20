@@ -525,14 +525,20 @@ static const IfsFsCoreOpsV2 core_group = {
         IFS_FS_GROUP_CORE, 0u,
         IFS_FS_CORE_PROBE | IFS_FS_CORE_MOUNT |
         IFS_FS_CORE_STAT | IFS_FS_CORE_LIST |
+#if defined(IFS_EXT2_FIRMWARE_BUILD)
+        IFS_FS_CORE_READ},
+#else
         IFS_FS_CORE_READ | IFS_FS_CORE_WRITE},
+#endif
     .probe = probe,
     .mount = mount,
     .unmount = unmount,
     .stat = stat_path,
     .directory_entry = directory_entry,
     .read = read_file,
+#if !defined(IFS_EXT2_FIRMWARE_BUILD)
     .write = write_file
+#endif
 };
 static const IfsFsGroupHeaderV2 *query_group(uint32_t group,
                                               uint32_t minimum,
@@ -549,7 +555,11 @@ static const IfsFsModuleApiV2 common_v2 = {
     .abi_version = IFS_FS_COMMON_ABI_V2,
     .structure_bytes = sizeof(IfsFsModuleApiV2),
     .format_id = "ext2",
+#if defined(IFS_EXT2_FIRMWARE_BUILD)
+    .runtime_profiles = IFS_FS_PROFILE_FREESTANDING | IFS_FS_PROFILE_FIRMWARE,
+#else
     .runtime_profiles = IFS_FS_PROFILE_HOSTED,
+#endif
     .group_mask = IFS_FS_GROUP_BIT(IFS_FS_GROUP_CORE) |
                   IFS_FS_GROUP_BIT(IFS_FS_GROUP_VOLUME) |
                   IFS_FS_GROUP_BIT(IFS_FS_GROUP_DEFRAG),
