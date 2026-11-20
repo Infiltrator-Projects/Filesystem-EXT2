@@ -43,7 +43,7 @@ truncate -s 128M "$media"
 mkfs.ext2 -q -F -b 1024 -O none,filetype,sparse_super,large_file -L EXT2ROOT -d "$tree" "$media"
 if [[ $mode == bad-superblock ]]; then
     # EXT2 superblock starts at byte 1024; magic is at +56.
-    printf '\\000\\000' | dd of="$media" bs=1 seek=1080 conv=notrunc status=none
+    printf '\000\000' | dd of="$media" bs=1 seek=1080 conv=notrunc status=none
 fi
 truncate -s 64M "$esp"
 mkfs.fat -F32 "$esp"
