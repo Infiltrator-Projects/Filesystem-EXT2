@@ -24,12 +24,12 @@ jobs:
           set -euo pipefail
           work="$RUNNER_TEMP/ext2-firmware"
           mkdir -p "$work"
-          boot=infiltrator-boot_0.1.46_amd64.deb
+          boot=infiltrator-boot_0.1.69_amd64.deb
           curl -fsSL --retry 3 \
-            "https://github.com/Infiltrator-Projects/Boot/releases/download/v0.1.46/$boot" \
+            "https://github.com/Infiltrator-Projects/Boot/releases/download/v0.1.69/$boot" \
             -o "$work/$boot"
           printf '%s  %s\n' \
-            9ab605a5312a54741d4a002e1131823ef7e28a73957f6473bea88a9c64d10035 \
+            73429727974a902372f7d2644d00bb1f527e42b4454f9f3cafbf8ef1ad6c9a8e \
             "$work/$boot" | sha256sum -c -
           dpkg-deb -x "$work/$boot" "$work/package"
       - name: Build one hosted EXT2.so containing the same freestanding V2 engine
