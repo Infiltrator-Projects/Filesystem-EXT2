@@ -126,9 +126,27 @@ static IfsExt2DropInIo native_io(CommonVolume *v)
     return io;
 }
 
+/* Keep native failures distinct.  In particular, a disk read error is
+ * neither a missing filesystem nor an absent path in Common V2. */
 static int status(IfsExt2Status s)
 {
-    return s == IFS_EXT2_OK ? IFS_FS_OK : IFS_FS_CORRUPT;
+    switch (s) {
+    case IFS_EXT2_OK: return IFS_FS_OK;
+    case IFS_EXT2_ERROR_MAGIC:
+    case IFS_EXT2_ERROR_NOT_FOUND: return IFS_FS_NOT_FOUND;
+    case IFS_EXT2_ERROR_IO: return IFS_FS_IO_ERROR;
+    case IFS_EXT2_ERROR_ARGUMENT:
+    case IFS_EXT2_ERROR_NOT_DIRECTORY:
+    case IFS_EXT2_ERROR_IS_DIRECTORY: return IFS_FS_INVALID;
+    case IFS_EXT2_ERROR_FEATURES:
+    case IFS_EXT2_ERROR_REVISION:
+    case IFS_EXT2_ERROR_JOURNALLED:
+    case IFS_EXT2_ERROR_UNSUPPORTED: return IFS_FS_UNSUPPORTED;
+    case IFS_EXT2_ERROR_NO_SPACE:
+    case IFS_EXT2_ERROR_BUFFER_TOO_SMALL: return IFS_FS_NO_SPACE;
+    case IFS_EXT2_STOP: return IFS_FS_END;
+    default: return IFS_FS_CORRUPT;
+    }
 }
 
 /* No format sniffing in a consumer: the real EXT2 engine validates media. */
@@ -136,11 +154,12 @@ static int probe(const IfsFsHostRuntimeV2 *h, uint32_t *variant)
 {
     CommonVolume v = {0};
     IfsExt2DropInIo io;
+    IfsExt2Status result;
     if (!io_usable(h) || !variant) return IFS_FS_INVALID;
     retain_host(&v.host, h);
     io = native_io(&v);
-    if (engine()->mount(&v.media, &io, 0) != IFS_EXT2_OK)
-        return IFS_FS_NOT_FOUND;
+    result = engine()->mount(&v.media, &io, 0);
+    if (result != IFS_EXT2_OK) return status(result);
     v.media.mounted = 0u;
     *variant = 2u;
     return IFS_FS_OK;
@@ -152,6 +171,7 @@ static int mount(const IfsFsHostRuntimeV2 *h, void **out,
     CommonVolume *v;
     IfsExt2DropInIo io;
     int allow_write;
+    IfsExt2Status result;
     if (!out || !info || info->structure_bytes < sizeof(*info) ||
         !io_usable(h) || !h->allocate || !h->release)
         return IFS_FS_INVALID;
@@ -163,9 +183,10 @@ static int mount(const IfsFsHostRuntimeV2 *h, void **out,
     io = native_io(v);
     allow_write = !(h->capabilities & IFS_FS_HOST_READ_ONLY) &&
         (h->capabilities & IFS_FS_HOST_EXCLUSIVE) && h->write_at && h->flush;
-    if (engine()->mount(&v->media, &io, allow_write) != IFS_EXT2_OK) {
+    result = engine()->mount(&v->media, &io, allow_write);
+    if (result != IFS_EXT2_OK) {
         h->release(h->context, v);
-        return IFS_FS_CORRUPT;
+        return status(result);
     }
     info->variant = 2u;
     info->block_bytes = v->media.fs.block_size;
@@ -235,7 +256,7 @@ static int resolve(CommonVolume *v, const char *path,
             return IFS_FS_NOT_FOUND;
         result = engine()->lookup(&v->media, inode->number, first,
             (ifs_ext2_u32)count, inode, work, v->media.fs.block_size);
-        if (result != IFS_EXT2_OK) return IFS_FS_NOT_FOUND;
+        if (result != IFS_EXT2_OK) return status(result);
         if (basename) *basename = first;
         if (basename_bytes) *basename_bytes = (uint32_t)count;
         if (*p == '/' && !*++p) return IFS_FS_INVALID;
@@ -304,10 +325,13 @@ static int enumerate_callback(void *opaque, ifs_ext2_u32 number,
         return 0;
     if (s->current++ != s->skip) return 0;
     s->found = 1;
-    if (ifs_ext2_read_inode(&s->volume->media.fs, number, &inode,
-            s->lookup_scratch, s->volume->media.fs.block_size) != IFS_EXT2_OK)
-        s->result = IFS_FS_CORRUPT;
-    else s->result = fill(s->entry, &inode, name, bytes);
+    {
+        IfsExt2Status result = ifs_ext2_read_inode(
+            &s->volume->media.fs, number, &inode, s->lookup_scratch,
+            s->volume->media.fs.block_size);
+        s->result = result == IFS_EXT2_OK ?
+            fill(s->entry, &inode, name, bytes) : status(result);
+    }
     return 1;
 }
 
@@ -340,7 +364,7 @@ static int directory_entry(void *volume, const char *path,
         enumerate_callback, &state, work, v->media.fs.block_size);
     if (state.found && result == IFS_EXT2_STOP) rc = state.result;
     else if (result == IFS_EXT2_OK) rc = IFS_FS_END;
-    else rc = IFS_FS_CORRUPT;
+    else rc = status(result);
 done:
     unscratch(v, callback_work);
     unscratch(v, work);
@@ -374,8 +398,8 @@ static int file_io(void *volume, const char *path, uint64_t offset,
     else
         result = engine()->read(&v->media, inode.number, offset,
             buffer, length, work, v->media.fs.block_size, &done);
-    rc = result == IFS_EXT2_OK && done == length ?
-        IFS_FS_OK : IFS_FS_IO_ERROR;
+    rc = result != IFS_EXT2_OK ? status(result) :
+        done == length ? IFS_FS_OK : IFS_FS_IO_ERROR;
 finish:
     unscratch(v, work);
     return rc;

@@ -56,9 +56,11 @@ static int memory_write(
 }
 
 #ifdef IFS_TEST_COMMON_V2
+static uint64_t forced_read_failure = UINT64_MAX;
 static int capped_read(void *host, uint64_t offset, void *dest,
                        uint32_t count)
 {
+    if (offset == forced_read_failure) return -1;
     return count <= 512u && (offset % 512u) == 0u &&
            count != 0u && (count % 512u) == 0u
         ? memory_read(host, offset, dest, count) : -1;
@@ -240,6 +242,10 @@ int main(void)
             !mounted || core->unmount(mounted) != IFS_FS_OK)
             return fail("Original short V2 host rejected");
         free(short_host);
+        forced_read_failure = BLOCK_SIZE;
+        if (core->probe(&host, &variant) != IFS_FS_IO_ERROR)
+            return fail("Native V2 probe hid a real media I/O error");
+        forced_read_failure = UINT64_MAX;
         mounted = NULL;
         details.structure_bytes = sizeof(details);
         if (core->probe(&host, &variant) != IFS_FS_OK || variant != 2u ||
@@ -255,6 +261,18 @@ int main(void)
             core->read(mounted, "/hello", 0u, content, 5u) != IFS_FS_OK ||
             memcmp(content, "hello", 5u))
             return fail("Native V2 EXT2 stat/list/read is incorrect");
+        if (core->stat(mounted, "/absent", &entry) != IFS_FS_NOT_FOUND)
+            return fail("Native V2 missing path lost NOT_FOUND status");
+        forced_read_failure = BLOCK_SIZE * 7u;
+        if (core->read(mounted, "/hello", 0u, content, 5u) != IFS_FS_IO_ERROR)
+            return fail("Native V2 file read hid a media I/O error");
+        forced_read_failure = UINT64_MAX;
+        store_le16(dir + 28u, 0u);
+        if (core->stat(mounted, "/hello", &entry) != IFS_FS_CORRUPT)
+            return fail("Native V2 lookup hid a corrupt directory entry");
+        store_le16(dir + 28u, 1000u);
+        if (disk.writes != 0u)
+            return fail("Read-only V2 negative tests modified source media");
         /* Real Common V2 defrag extent mapping shares the canonical
          * on-disk allocation-bitmap validation with the write preflight. */
         const IfsFsDefragOpsV2 *defrag =
