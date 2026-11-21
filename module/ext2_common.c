@@ -316,8 +316,12 @@ static int fill(IfsFsEntryV2 *entry, const IfsExt2Inode *inode,
 {
     IfsExt2NodeType t;
     if (!entry || entry->structure_bytes < sizeof(*entry) ||
-        !entry->name || !name || name_bytes >= entry->name_capacity)
+        !entry->name || !name)
         return IFS_FS_INVALID;
+    /* The structure is valid; only the caller-owned output buffer is small.
+     * No entry fields or name bytes are modified on this failure. */
+    if (name_bytes >= entry->name_capacity)
+        return IFS_FS_NO_SPACE;
     t = ifs_ext2_inode_type(inode);
     if (t != IFS_EXT2_NODE_REGULAR &&
         t != IFS_EXT2_NODE_DIRECTORY &&
