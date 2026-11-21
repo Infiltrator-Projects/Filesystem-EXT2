@@ -12,6 +12,32 @@ typedef struct {
     IfsExt2DropInVolume media;
 } CommonVolume;
 
+/* A V2 caller holds an opaque lifetime token, never an allocator address.
+ * Reusing the same allocation after unmount must not revive stale handles.
+ * The table is deliberately bounded for both hosted and freestanding BOOT. */
+#define IFS_EXT_V2_MAX_SESSIONS 32u
+static struct {
+    uintptr_t token;
+    CommonVolume *volume;
+} sessions[IFS_EXT_V2_MAX_SESSIONS];
+static uintptr_t session_generation;
+static CommonVolume *session_lookup(void *handle)
+{
+    const uintptr_t token=(uintptr_t)handle;
+    if (!token) return NULL;
+    for (size_t i=0;i<IFS_EXT_V2_MAX_SESSIONS;++i)
+        if (sessions[i].token==token)
+            return sessions[i].volume;
+    return NULL;
+}
+static size_t session_free_slot(void)
+{
+    for (size_t i=0;i<IFS_EXT_V2_MAX_SESSIONS;++i)
+        if (!sessions[i].token)
+            return i;
+    return IFS_EXT_V2_MAX_SESSIONS;
+}
+
 /* Snapshot only the V2 fields supplied by the host, including older
  * callers that end before later optional extensions. */
 static void retain_host(IfsFsHostRuntimeV2 *dst, const IfsFsHostRuntimeV2 *src)
@@ -176,6 +202,9 @@ static int mount(const IfsFsHostRuntimeV2 *h, void **out,
         !io_usable(h) || !h->allocate || !h->release)
         return IFS_FS_INVALID;
     *out = NULL;
+    const size_t slot=session_free_slot();
+    if (slot==IFS_EXT_V2_MAX_SESSIONS ||
+        session_generation==UINTPTR_MAX) return IFS_FS_BUSY;
     v = (CommonVolume *)h->allocate(h->context, sizeof(*v));
     if (!v) return IFS_FS_NO_MEMORY;
     memset(v, 0, sizeof(*v));
@@ -193,7 +222,10 @@ static int mount(const IfsFsHostRuntimeV2 *h, void **out,
     info->max_name_bytes = IFS_EXT2_MAX_NAME_LENGTH;
     info->total_bytes = v->media.fs.byte_size;
     info->free_bytes = v->media.fs.free_blocks * v->media.fs.block_size;
-    *out = v;
+    const uintptr_t token=++session_generation;
+    sessions[slot].token=token;
+    sessions[slot].volume=v;
+    *out = (void *)token;
     return IFS_FS_OK;
 }
 
@@ -205,9 +237,16 @@ static int valid(const CommonVolume *v)
 
 static int unmount(void *volume)
 {
-    CommonVolume *v = (CommonVolume *)volume;
+    CommonVolume *v=session_lookup(volume);
     IfsFsHostRuntimeV2 h;
     if (!valid(v)) return IFS_FS_INVALID;
+    for(size_t i=0;i<IFS_EXT_V2_MAX_SESSIONS;++i) {
+        if(sessions[i].token==(uintptr_t)volume) {
+            sessions[i].token=0u;
+            sessions[i].volume=NULL;
+            break;
+        }
+    }
     h = v->host;
     v->media.mounted = 0u;
     v->media.writable = 0u;
@@ -288,7 +327,7 @@ static int fill(IfsFsEntryV2 *entry, const IfsExt2Inode *inode,
 
 static int stat_path(void *volume, const char *path, IfsFsEntryV2 *entry)
 {
-    CommonVolume *v = (CommonVolume *)volume;
+    CommonVolume *v = session_lookup(volume);
     IfsExt2Inode inode;
     const char *name = NULL;
     uint32_t len = 0u;
@@ -338,7 +377,7 @@ static int enumerate_callback(void *opaque, ifs_ext2_u32 number,
 static int directory_entry(void *volume, const char *path,
                            uint32_t index, IfsFsEntryV2 *entry)
 {
-    CommonVolume *v = (CommonVolume *)volume;
+    CommonVolume *v = session_lookup(volume);
     IfsExt2Inode parent;
     void *work = NULL, *callback_work = NULL;
     EnumerateState state = {0};
@@ -374,7 +413,7 @@ done:
 static int file_io(void *volume, const char *path, uint64_t offset,
                    void *buffer, uint32_t length, int write)
 {
-    CommonVolume *v = (CommonVolume *)volume;
+    CommonVolume *v = session_lookup(volume);
     IfsExt2Inode inode;
     ifs_ext2_u32 done = 0u;
     void *work;
@@ -423,7 +462,7 @@ static int extent_map(void *volume, const char *path, uint64_t first_extent,
                       IfsFsExtentV2 *extents, uint32_t capacity,
                       uint32_t *written)
 {
-    CommonVolume *v = (CommonVolume *)volume;
+    CommonVolume *v = session_lookup(volume);
     IfsExt2Inode inode;
     uint64_t logical, index = 0u;
     uint64_t blocks;
@@ -495,7 +534,7 @@ static const IfsFsDefragOpsV2 defrag_group = {
  * EXT2 implementation actually supplies independently tested operations. */
 static int volume_query(void *mounted, IfsFsVolumeInfoV2 *out)
 {
-    CommonVolume *v = (CommonVolume *)mounted;
+    CommonVolume *v = session_lookup(mounted);
     if (!valid(v) || !out || out->structure_bytes < sizeof(*out))
         return IFS_FS_INVALID;
     out->variant = 2u;
@@ -507,7 +546,7 @@ static int volume_query(void *mounted, IfsFsVolumeInfoV2 *out)
 }
 static int volume_sync(void *mounted)
 {
-    CommonVolume *v = (CommonVolume *)mounted;
+    CommonVolume *v = session_lookup(mounted);
     if (!valid(v)) return IFS_FS_INVALID;
     if (!v->media.writable) return IFS_FS_OK;
     return v->host.flush && v->host.flush(v->host.context) == 0 ?
