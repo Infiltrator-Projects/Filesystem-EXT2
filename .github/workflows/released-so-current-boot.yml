@@ -1,14 +1,15 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Check the actual existing release carrier; do not rebuild or change BOOT.
 name: Validate released Common V2 SO against current production BOOT
+# BOOT integration is not ready. Run only by explicit dispatch after the
+# repository variable IFS_BOOT_INTEGRATION_READY has been set to true.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   published-module-current-boot:
+    if: ${{ vars.IFS_BOOT_INTEGRATION_READY == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
