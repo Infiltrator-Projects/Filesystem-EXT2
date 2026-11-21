@@ -290,6 +290,12 @@ int main(void)
                         &mapped_count) != IFS_FS_END ||
             mapped_count != 0u)
             return fail("Native V2 EXT2 map reports incorrect physical extents");
+        forced_read_failure = BLOCK_SIZE * 3u;
+        mapped_count = 17u;
+        if (defrag->map(mounted, "/hello", 0u, mapped, 2u,
+                        &mapped_count) != IFS_FS_IO_ERROR || mapped_count != 0u)
+            return fail("Native V2 EXT2 extent map hid bitmap read failure");
+        forced_read_failure = UINT64_MAX;
         if (core->write(mounted, "/hello", 0u, "X", 1u) != IFS_FS_ACCESS ||
             core->create != NULL || core->truncate != NULL ||
             disk.writes != 0u)

@@ -489,24 +489,24 @@ static int extent_map(void *volume, const char *path, uint64_t first_extent,
     for (logical = 0u; logical < blocks; ++logical) {
         ifs_ext2_u64 physical = 0u;
         int hole = 0;
-        IfsExt2Status status;
+        IfsExt2Status native_status;
         if (v->host.cancelled && (logical & 255u) == 0u &&
             v->host.cancelled(v->host.context)) {
             rc = IFS_FS_BUSY;
             goto done;
         }
-        status = ifs_ext2_map_file_block(&v->media.fs, &inode,
+        native_status = ifs_ext2_map_file_block(&v->media.fs, &inode,
             (ifs_ext2_u32)logical, &physical, &hole,
             work, v->media.fs.block_size);
-        if (status != IFS_EXT2_OK) {
-            rc = IFS_FS_CORRUPT;
+        if (native_status != IFS_EXT2_OK) {
+            rc = status(native_status);
             goto done;
         }
         if (hole) continue;
-        status = ifs_ext2_validate_allocated_data_block(
+        native_status = ifs_ext2_validate_allocated_data_block(
             &v->media.fs, physical, work, v->media.fs.block_size);
-        if (status != IFS_EXT2_OK) {
-            rc = IFS_FS_CORRUPT;
+        if (native_status != IFS_EXT2_OK) {
+            rc = status(native_status);
             goto done;
         }
         if (index++ < first_extent) continue;
