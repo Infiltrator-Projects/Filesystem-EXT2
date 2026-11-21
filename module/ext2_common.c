@@ -181,7 +181,9 @@ static int probe(const IfsFsHostRuntimeV2 *h, uint32_t *variant)
     CommonVolume v = {0};
     IfsExt2DropInIo io;
     IfsExt2Status result;
-    if (!io_usable(h) || !variant) return IFS_FS_INVALID;
+    if (!variant) return IFS_FS_INVALID;
+    *variant = 0u;
+    if (!io_usable(h)) return IFS_FS_INVALID;
     retain_host(&v.host, h);
     io = native_io(&v);
     result = engine()->mount(&v.media, &io, 0);

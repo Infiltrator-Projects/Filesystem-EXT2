@@ -243,8 +243,8 @@ int main(void)
             return fail("Original short V2 host rejected");
         free(short_host);
         forced_read_failure = BLOCK_SIZE;
-        if (core->probe(&host, &variant) != IFS_FS_IO_ERROR)
-            return fail("Native V2 probe hid a real media I/O error");
+        if (core->probe(&host, &variant) != IFS_FS_IO_ERROR || variant != 0u)
+            return fail("Native V2 probe hid an I/O error or retained a stale variant");
         forced_read_failure = UINT64_MAX;
         mounted = NULL;
         details.structure_bytes = sizeof(details);

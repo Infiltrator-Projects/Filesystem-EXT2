@@ -29,7 +29,7 @@ jobs:
             "https://github.com/Infiltrator-Projects/Boot/releases/download/v0.1.72/$boot" \
             -o "$work/$boot"
           printf '%s  %s\n' \
-            baed6e8e3d8be51a61ea180e7f8d3b4fb204881a472795c518fe46dbfce1c9a5 \
+            d72bd059c175424cef33e18ec2be9754d50e4afcdf67d088c89faa54363e9e4a \
             "$work/$boot" | sha256sum -c -
           dpkg-deb -x "$work/$boot" "$work/package"
       - name: Build one hosted EXT2.so containing the same freestanding V2 engine
