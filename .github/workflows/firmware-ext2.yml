@@ -42,6 +42,7 @@ jobs:
           test -s "$work/build/EXT2.so"
           test -s "$work/build/firmware/EXT2.so"
           readelf -SW "$work/build/EXT2.so" | grep -F '.infiltrator_boot'
+          readelf -p .ifsmeta "$work/build/EXT2.so" | grep -F "IFS-MODULE:ext2:common2"
           validator="$work/package/usr/lib/infiltrator-boot/validate-module"
           if ! "$validator" "$work/build/firmware/EXT2.so"; then
             echo 'Unmodified BOOT validator rejected the freestanding ELF' >&2
