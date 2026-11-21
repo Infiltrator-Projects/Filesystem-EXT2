@@ -52,7 +52,7 @@ jobs:
           if-no-files-found: error
   publish:
     needs: qualify
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: vars.IFS_BOOT_INTEGRATION_READY == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
