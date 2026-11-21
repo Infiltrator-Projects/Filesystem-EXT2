@@ -13,15 +13,12 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Download SHA-256 pinned production BOOT 0.1.77
+      - name: Download SHA-256 pinned production rebuilt BOOT
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/current-boot" "$RUNNER_TEMP/provider"
-          boot=infiltrator-boot_0.1.77_amd64.deb
-          curl -fsSL --retry 3             "https://github.com/Infiltrator-Projects/Boot/releases/download/v0.1.77/$boot"             -o "$RUNNER_TEMP/current-boot/$boot"
-          printf '%s  %s\n'             c70fd0bec2d6a2728e9ceddb4149c58ef63955ecfe42184a18ea960ede6a1c5c             "$RUNNER_TEMP/current-boot/$boot" | sha256sum -c -
-          dpkg-deb -x "$RUNNER_TEMP/current-boot/$boot" "$RUNNER_TEMP/current-boot/installed"
+          bash tests/require-rebuilt-boot.sh
       - name: Download and verify immutable published filesystem package
         shell: bash
         env:
@@ -43,11 +40,11 @@ jobs:
         run: |
           set -euo pipefail
           module="$RUNNER_TEMP/provider/root/System/Filesystems/EXT2.so"
-          validator="$RUNNER_TEMP/current-boot/installed/usr/lib/infiltrator-boot/validate-module"
+          validator="$IFS_BOOT_VALIDATOR"
           test -x "$validator"
           nm -D --defined-only "$module" | grep -F infiltrator_filesystem_api_v2
           ! nm -D --defined-only "$module" | grep -E 'infiltrator_filesystem_.*_v1'
           readelf -SW "$module" | grep -F .infiltrator_boot
           readelf -p .ifsmeta "$module" | grep -F "IFS-MODULE:ext2:common2"
           "$validator" "$module"
-          echo "PUBLISHED_SO_BOOT_0_1_77_VALIDATOR_PASS EXT2.so"
+          echo "PUBLISHED_SO_BOOT_REBUILT_VALIDATOR_PASS EXT2.so"

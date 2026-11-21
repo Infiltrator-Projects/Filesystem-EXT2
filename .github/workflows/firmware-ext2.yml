@@ -24,14 +24,7 @@ jobs:
           set -euo pipefail
           work="$RUNNER_TEMP/ext2-firmware"
           mkdir -p "$work"
-          boot=infiltrator-boot_0.1.72_amd64.deb
-          curl -fsSL --retry 3 \
-            "https://github.com/Infiltrator-Projects/Boot/releases/download/v0.1.72/$boot" \
-            -o "$work/$boot"
-          printf '%s  %s\n' \
-            d72bd059c175424cef33e18ec2be9754d50e4afcdf67d088c89faa54363e9e4a \
-            "$work/$boot" | sha256sum -c -
-          dpkg-deb -x "$work/$boot" "$work/package"
+          bash tests/require-rebuilt-boot.sh
       - name: Build one hosted EXT2.so containing the same freestanding V2 engine
         run: |
           set -euo pipefail
@@ -43,7 +36,7 @@ jobs:
           test -s "$work/build/firmware/EXT2.so"
           readelf -SW "$work/build/EXT2.so" | grep -F '.infiltrator_boot'
           readelf -p .ifsmeta "$work/build/EXT2.so" | grep -F "IFS-MODULE:ext2:common2"
-          validator="$work/package/usr/lib/infiltrator-boot/validate-module"
+          validator="$IFS_BOOT_VALIDATOR"
           if ! "$validator" "$work/build/firmware/EXT2.so"; then
             echo 'Unmodified BOOT validator rejected the freestanding ELF' >&2
             readelf -hW "$work/build/firmware/EXT2.so"
@@ -75,7 +68,7 @@ jobs:
           dpkg-deb -x "$work"/linux-image-unsigned-*.deb "$work/kernel"
           kernel="$work/kernel/boot/vmlinuz-${image#linux-image-}"
           test -s "$kernel"
-          boot="$work/package/usr/lib/infiltrator-boot/EFI/BOOT/BOOTX64.EFI"
+          boot="$IFS_BOOT_EFI"
           module="$work/stage/System/Filesystems/EXT2.so"
           bash tests/firmware-ext2.sh "$boot" "$module" "$kernel" "$work/vm"
           bash tests/firmware-ext2.sh "$boot" "$module" "$kernel" "$work/bad-vm" bad-superblock
