@@ -427,8 +427,14 @@ IfsExt2Status ifs_ext2_map_file_block(
     }
 
     for (level = 1U; level < path.depth; ++level) {
-        if (block >= volume->total_blocks)
-            return IFS_EXT2_ERROR_CORRUPT;
+        /* An indirect pointer is filesystem-owned data, not a licence
+         * to interpret a bitmap or inode table as an index. Validate its
+         * allocation and metadata boundaries before following the link.
+         * The verifier may use scratch; reload the indirect block below. */
+        status = ifs_ext2_validate_allocated_data_block(
+            volume, block, scratch, scratch_size);
+        if (status != IFS_EXT2_OK)
+            return status;
         status = block_offset(volume, block, &offset);
         if (status != IFS_EXT2_OK)
             return status;
@@ -501,6 +507,14 @@ IfsExt2Status ifs_ext2_read_file(
         if (hole) {
             zero_bytes(out + total, chunk);
         } else {
+            /* Do not expose unallocated blocks or filesystem metadata as
+             * file contents when an inode block pointer is corrupted.
+             * The validator uses scratch, which is no longer needed to
+             * resolve this logical block after map_file_block returns. */
+            status = ifs_ext2_validate_allocated_data_block(
+                volume, physical, scratch, scratch_size);
+            if (status != IFS_EXT2_OK)
+                return status;
             status = block_offset(volume, physical, &block_byte);
             if (status != IFS_EXT2_OK)
                 return status;
@@ -718,6 +732,13 @@ IfsExt2Status ifs_ext2_iterate_directory(
             return status;
         if (hole)
             return IFS_EXT2_ERROR_CORRUPT;
+        /* The allocated-block check must happen before loading the
+         * directory: it reuses scratch to examine the group bitmap.
+         * This also rejects pointers into allocation metadata. */
+        status = ifs_ext2_validate_allocated_data_block(
+            volume, physical, scratch, scratch_size);
+        if (status != IFS_EXT2_OK)
+            return status;
         status = block_offset(volume, physical, &block_byte);
         if (status != IFS_EXT2_OK)
             return status;
