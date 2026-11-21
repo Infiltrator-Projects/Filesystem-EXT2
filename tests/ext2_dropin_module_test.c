@@ -294,8 +294,13 @@ int main(void)
             core->create != NULL || core->truncate != NULL ||
             disk.writes != 0u)
             return fail("Native V2 mount violated read-only policy");
+        void *expired = mounted;
         if (core->unmount(mounted) != IFS_FS_OK)
             return fail("Native V2 unmount failed");
+        if (core->unmount(expired) != IFS_FS_INVALID ||
+            core->stat(expired, "/hello", &entry) != IFS_FS_INVALID ||
+            core->read(expired, "/hello", 0u, content, 1u) != IFS_FS_INVALID)
+            return fail("Stale EXT2 V2 handle remained usable after unmount");
         /* A writable V2 host has a verified exclusive durable lease, and
          * byte spans larger than 512 are still bounded by its advertised
          * transfer limit. Keep the original native-engine fixture untouched. */
@@ -307,8 +312,9 @@ int main(void)
         writable.flush = memory_flush;
         mounted = NULL;
         if (core->mount(&writable, &mounted, &details) != IFS_FS_OK ||
-            !mounted)
-            return fail("Native V2 exclusive mount failed");
+            !mounted || mounted==expired ||
+            core->stat(expired, "/hello", &entry) != IFS_FS_INVALID)
+            return fail("Allocator reuse revived an expired EXT2 V2 handle");
         if (core->write(mounted, "/hello", 1u, "A", 1u) != IFS_FS_OK ||
             writable_disk.writes == 0u ||
             memcmp(writable_disk.bytes + BLOCK_SIZE * 7U, "hAllo", 5u))
