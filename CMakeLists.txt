@@ -165,6 +165,26 @@ if(BUILD_TESTING)
 endif()
 
 if(BUILD_TESTING)
+ # Build the actual firmware-profile adapter, not the hosted library, so
+ # a writable Common V2 host cannot silently activate the native writer.
+ add_executable(ext2-firmware-readonly-test
+  tests/test_ext2_firmware_readonly.c
+  module/ext2_common.c
+  native/filesystems/ext2/core/ext2_core.c
+  native/filesystems/ext2/core/ext2_engine.c
+  native/filesystems/ext2/module/ext2_module.c)
+ target_compile_definitions(ext2-firmware-readonly-test PRIVATE
+  IFS_EXT2_FIRMWARE_BUILD=1)
+ target_include_directories(ext2-firmware-readonly-test PRIVATE
+  "${infiltratr_common_SOURCE_DIR}/include")
+ target_compile_options(ext2-firmware-readonly-test PRIVATE
+  -Wall -Wextra -Wpedantic -Werror)
+ target_link_libraries(ext2-firmware-readonly-test PRIVATE
+  InfiltratrCommon::Common)
+ add_test(NAME ext2-firmware-readonly-lease COMMAND ext2-firmware-readonly-test)
+endif()
+
+if(BUILD_TESTING)
  add_test(NAME ext2-no-legacy-public-abi
   COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_v2_exports.sh"
           "$<TARGET_FILE:ext-ext2-driver>")
