@@ -48,5 +48,6 @@ jobs:
           nm -D --defined-only "$module" | grep -F infiltrator_filesystem_api_v2
           ! nm -D --defined-only "$module" | grep -E 'infiltrator_filesystem_.*_v1'
           readelf -SW "$module" | grep -F .infiltrator_boot
+          readelf -p .ifsmeta "$module" | grep -F "IFS-MODULE:ext2:common2"
           "$validator" "$module"
           echo "PUBLISHED_SO_BOOT_0_1_77_VALIDATOR_PASS EXT2.so"
