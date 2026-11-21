@@ -261,6 +261,22 @@ int main(void)
             core->read(mounted, "/hello", 0u, content, 5u) != IFS_FS_OK ||
             memcmp(content, "hello", 5u))
             return fail("Native V2 EXT2 stat/list/read is incorrect");
+        /* A too-small output name buffer is a capacity error, not an
+         * invalid V2 request. Neither STAT nor LIST may write a prefix. */
+        {
+            char narrow_name[5] = {'X', 'X', 'X', 'X', 'X'};
+            const char untouched[5] = {'X', 'X', 'X', 'X', 'X'};
+            IfsFsEntryV2 narrow = {
+                .structure_bytes = sizeof(IfsFsEntryV2),
+                .name = narrow_name, .name_capacity = sizeof narrow_name
+            };
+            if (core->stat(mounted, "/hello", &narrow) != IFS_FS_NO_SPACE ||
+                memcmp(narrow_name, untouched, sizeof narrow_name) != 0 ||
+                core->directory_entry(mounted, "/", 0u, &narrow) != IFS_FS_NO_SPACE ||
+                memcmp(narrow_name, untouched, sizeof narrow_name) != 0 ||
+                narrow.name_bytes != 0u)
+                return fail("Native V2 EXT2 short name buffer violated NO_SPACE");
+        }
         if (core->stat(mounted, "/absent", &entry) != IFS_FS_NOT_FOUND)
             return fail("Native V2 missing path lost NOT_FOUND status");
         forced_read_failure = BLOCK_SIZE * 7u;
