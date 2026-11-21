@@ -7,6 +7,12 @@
 #include <stdint.h>
 #include <string.h>
 
+/* Static Common V2 module identity is discoverable without executing ELF. */
+#if !defined(IFS_EXT2_FIRMWARE_BUILD)
+__attribute__((used, retain, section(".ifsmeta")))
+static const char ext2_v2_identity[] = "IFS-MODULE:ext2:common2";
+#endif
+
 typedef struct {
     IfsFsHostRuntimeV2 host;
     IfsExt2DropInVolume media;
