@@ -259,6 +259,7 @@ int main(void)
             strcmp(name, "hello") ||
             core->directory_entry(mounted, "/", 1u, &entry) != IFS_FS_END ||
             core->read(mounted, "/hello", 0u, content, 5u) != IFS_FS_OK ||
+            core->read(mounted, "/hello", 5u, content, 1u) != IFS_FS_INVALID ||
             memcmp(content, "hello", 5u))
             return fail("Native V2 EXT2 stat/list/read is incorrect");
         /* A too-small output name buffer is a capacity error, not an
