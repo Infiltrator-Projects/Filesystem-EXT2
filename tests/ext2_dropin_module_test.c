@@ -162,10 +162,10 @@ int main(void)
     store_le32(gd + 0x04U, 4U);
     store_le32(gd + 0x08U, 5U);
 
-    /* EXT2 bitmap: block 7 is bit 6 of group zero (first_data=1).
-     * A real writer must refuse data blocks not marked allocated.
-     */
-    disk.bytes[BLOCK_SIZE * 3U] |= 1U << 6;
+    /* EXT2 group zero begins at block 1. Both the directory block 6
+     * and file-data block 7 must be allocated on a consistent image.
+     * Read and write paths reject absent allocation bits. */
+    disk.bytes[BLOCK_SIZE * 3U] |= (1U << 5) | (1U << 6);
 
     make_inode(inode_table + 128U, 0x41EDU, BLOCK_SIZE, 6U);
     make_inode(inode_table + 256U, 0x81A4U, 5U, 7U);
@@ -279,6 +279,30 @@ int main(void)
         }
         if (core->stat(mounted, "/absent", &entry) != IFS_FS_NOT_FOUND)
             return fail("Native V2 missing path lost NOT_FOUND status");
+        /* A damaged EXT2 inode must not redirect kernel or initramfs
+         * reads into the inode table, even if that block is in bounds.
+         * An unallocated data block must likewise fail closed. */
+        const unsigned char original_bitmap = disk.bytes[BLOCK_SIZE * 3U];
+        disk.bytes[BLOCK_SIZE * 3U] &= (unsigned char)~(1U << 6);
+        if (core->read(mounted, "/hello", 0u, content, 5u) != IFS_FS_CORRUPT)
+            return fail("Native V2 read accepted unallocated EXT2 file block");
+        disk.bytes[BLOCK_SIZE * 3U] = original_bitmap;
+        store_le32(inode_table + 256U + 0x28U, 5U);
+        if (core->read(mounted, "/hello", 0u, content, 5u) != IFS_FS_CORRUPT)
+            return fail("Native V2 read exposed EXT2 inode-table bytes");
+        store_le32(inode_table + 256U + 0x28U, 7U);
+        /* A corrupt directory pointer cannot be interpreted as a
+         * filename table, including while resolving a boot path. */
+        store_le32(inode_table + 128U + 0x28U, 5U);
+        if (core->stat(mounted, "/hello", &entry) != IFS_FS_CORRUPT)
+            return fail("Native V2 directory lookup exposed inode-table bytes");
+        store_le32(inode_table + 128U + 0x28U, 6U);
+        disk.bytes[BLOCK_SIZE * 3U] &= (unsigned char)~(1U << 5);
+        if (core->directory_entry(mounted, "/", 0u, &entry) != IFS_FS_CORRUPT)
+            return fail("Native V2 enumeration accepted unallocated directory block");
+        disk.bytes[BLOCK_SIZE * 3U] = original_bitmap;
+        if (disk.writes != 0u)
+            return fail("Corrupt-media V2 read paths wrote to source image");
         forced_read_failure = BLOCK_SIZE * 7u;
         if (core->read(mounted, "/hello", 0u, content, 5u) != IFS_FS_IO_ERROR)
             return fail("Native V2 file read hid a media I/O error");
