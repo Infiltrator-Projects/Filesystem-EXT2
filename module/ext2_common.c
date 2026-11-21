@@ -448,7 +448,10 @@ static int file_io(void *volume, const char *path, uint64_t offset,
         rc = IFS_FS_INVALID; goto finish;
     }
     if (offset > inode.size || length > inode.size - offset) {
-        rc = IFS_FS_INVALID; goto finish;
+        /* Reads outside the file are invalid; extending writes remain
+         * unsupported until a qualified allocation transaction exists. */
+        rc = write ? IFS_FS_UNSUPPORTED : IFS_FS_INVALID;
+        goto finish;
     }
     if (write)
         result = engine()->write_existing(&v->media, inode.number, offset,
