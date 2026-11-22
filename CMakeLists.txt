@@ -70,7 +70,8 @@ target_link_libraries(ext-core PUBLIC InfiltratrCommon::Common OpenSSL::Crypto S
   native/filesystems/ext2/core/ext2_core.c
   native/filesystems/ext2/core/ext2_engine.c
   native/filesystems/ext2/module/ext2_module.c)
- set_target_properties(ext-ext2-driver PROPERTIES PREFIX "" OUTPUT_NAME "EXT2" SUFFIX ".so")
+ set_target_properties(ext-ext2-driver PROPERTIES PREFIX "" OUTPUT_NAME "EXT2" SUFFIX ".so"
+  C_VISIBILITY_PRESET hidden)
  # Both installed .deb and native .run carry this one ELF carrier, not an
  # alternate firmware-only package. No kernel driver or separate .so is shipped.
  add_dependencies(ext-ext2-driver ext2-firmware-elf)
@@ -83,7 +84,10 @@ target_link_libraries(ext-core PUBLIC InfiltratrCommon::Common OpenSSL::Crypto S
   VERBATIM)
  target_compile_definitions(ext-ext2-driver PRIVATE _GNU_SOURCE _FILE_OFFSET_BITS=64)
  target_compile_options(ext-ext2-driver PRIVATE -Wall -Wextra -Wpedantic -Werror)
- target_link_options(ext-ext2-driver PRIVATE -Wl,-z,defs)
+ target_link_options(ext-ext2-driver PRIVATE -Wl,-z,defs
+  "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/module/v2-only.map")
+ set_property(TARGET ext-ext2-driver APPEND PROPERTY LINK_DEPENDS
+  "${CMAKE_CURRENT_SOURCE_DIR}/module/v2-only.map")
  target_include_directories(ext-ext2-driver PRIVATE
   "${EXT_SRC}" "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/include" "${CMAKE_CURRENT_SOURCE_DIR}/compat"
   "${CMAKE_CURRENT_SOURCE_DIR}/include" "${CMAKE_CURRENT_BINARY_DIR}")
@@ -102,6 +106,12 @@ target_link_libraries(ext-core PUBLIC InfiltratrCommon::Common OpenSSL::Crypto S
     "${CMAKE_CURRENT_SOURCE_DIR}/native/filesystems/ext2/module")
   target_compile_options(ext2-dropin-module-test PRIVATE -Wall -Wextra -Wpedantic -Werror -UNDEBUG)
   target_compile_definitions(ext2-dropin-module-test PRIVATE IFS_TEST_COMMON_V2=1)
+  # Exercise the native EXT2 engine from the test executable itself. Its
+  # private entry points must never be exported by the installed EXT2.so.
+  target_sources(ext2-dropin-module-test PRIVATE
+    native/filesystems/ext2/core/ext2_core.c
+    native/filesystems/ext2/core/ext2_engine.c
+    native/filesystems/ext2/module/ext2_module.c)
   target_link_libraries(ext2-dropin-module-test PRIVATE ext-ext2-driver InfiltratrCommon::Common)
   add_test(NAME ext2-dropin-module-contract COMMAND ext2-dropin-module-test)
  endif()
