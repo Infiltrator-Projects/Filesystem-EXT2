@@ -57,9 +57,18 @@ static int memory_write(
 
 #ifdef IFS_TEST_COMMON_V2
 static uint64_t forced_read_failure = UINT64_MAX;
+static const IfsFsCoreOpsV2 *unmount_during_read;
+static void *active_volume;
+static int observed_unmount;
 static int capped_read(void *host, uint64_t offset, void *dest,
                        uint32_t count)
 {
+    if (unmount_during_read) {
+        const IfsFsCoreOpsV2 *ops=unmount_during_read;
+        unmount_during_read=NULL;
+        observed_unmount=ops->unmount(active_volume);
+        if (observed_unmount!=IFS_FS_BUSY) return -1;
+    }
     if (offset == forced_read_failure) return -1;
     return count <= 512u && (offset % 512u) == 0u &&
            count != 0u && (count % 512u) == 0u
@@ -262,6 +271,12 @@ int main(void)
             core->read(mounted, "/hello", 5u, content, 1u) != IFS_FS_INVALID ||
             memcmp(content, "hello", 5u))
             return fail("Native V2 EXT2 stat/list/read is incorrect");
+        active_volume=mounted;
+        unmount_during_read=core;
+        observed_unmount=IFS_FS_INVALID;
+        if (core->read(mounted, "/hello", 0u, content, 5u) != IFS_FS_OK ||
+            unmount_during_read || observed_unmount!=IFS_FS_BUSY)
+            return fail("reentrant unmount must report BUSY");
         /* A too-small output name buffer is a capacity error, not an
          * invalid V2 request. Neither STAT nor LIST may write a prefix. */
         {

@@ -6,6 +6,23 @@
 #include "../native/filesystems/ext2/module/ext2_module.h"
 #include <stdint.h>
 #include <string.h>
+#include <stdatomic.h>
+
+/* Serialize access to the native engine and the session table. The V2
+ * host must never be able to retire an active volume from an I/O callback.
+ * Return BUSY rather than waiting inside a reentrant host callback.
+ * Per-volume parallel I/O requires separate qualification. */
+static atomic_flag v2_operation_gate=ATOMIC_FLAG_INIT;
+static int v2_enter_operation(void)
+{
+    return !atomic_flag_test_and_set_explicit(&v2_operation_gate,memory_order_acquire);
+}
+static int v2_leave_operation(int rc)
+{
+    atomic_flag_clear_explicit(&v2_operation_gate,memory_order_release);
+    return rc;
+}
+
 
 /* Static Common V2 module identity is discoverable without executing ELF. */
 #if !defined(IFS_EXT2_FIRMWARE_BUILD)
@@ -198,6 +215,13 @@ static int probe(const IfsFsHostRuntimeV2 *h, uint32_t *variant)
     *variant = 2u;
     return IFS_FS_OK;
 }
+static int guarded_probe(const IfsFsHostRuntimeV2 *h, uint32_t *variant)
+{
+    if (variant) *variant=0u;
+    if (!v2_enter_operation()) return IFS_FS_BUSY;
+    return v2_leave_operation(probe(h,variant));
+}
+
 
 static int mount(const IfsFsHostRuntimeV2 *h, void **out,
                  IfsFsVolumeInfoV2 *info)
@@ -243,6 +267,14 @@ static int mount(const IfsFsHostRuntimeV2 *h, void **out,
     *out = (void *)token;
     return IFS_FS_OK;
 }
+static int guarded_mount(const IfsFsHostRuntimeV2 *h, void **out,
+                 IfsFsVolumeInfoV2 *info)
+{
+    if (out) *out=NULL;
+    if (!v2_enter_operation()) return IFS_FS_BUSY;
+    return v2_leave_operation(mount(h,out,info));
+}
+
 
 static int valid(const CommonVolume *v)
 {
@@ -268,6 +300,12 @@ static int unmount(void *volume)
     h.release(h.context, v);
     return IFS_FS_OK;
 }
+static int guarded_unmount(void *volume)
+{
+    if (!v2_enter_operation()) return IFS_FS_BUSY;
+    return v2_leave_operation(unmount(volume));
+}
+
 
 static void *scratch(CommonVolume *v)
 {
@@ -360,6 +398,12 @@ static int stat_path(void *volume, const char *path, IfsFsEntryV2 *entry)
     unscratch(v, work);
     return result;
 }
+static int guarded_stat_path(void *volume, const char *path, IfsFsEntryV2 *entry)
+{
+    if (!v2_enter_operation()) return IFS_FS_BUSY;
+    return v2_leave_operation(stat_path(volume,path,entry));
+}
+
 
 typedef struct {
     CommonVolume *volume;
@@ -428,6 +472,13 @@ done:
     unscratch(v, work);
     return rc;
 }
+static int guarded_directory_entry(void *volume, const char *path,
+                           uint32_t index, IfsFsEntryV2 *entry)
+{
+    if (!v2_enter_operation()) return IFS_FS_BUSY;
+    return v2_leave_operation(directory_entry(volume,path,index,entry));
+}
+
 
 static int file_io(void *volume, const char *path, uint64_t offset,
                    void *buffer, uint32_t length, int write)
@@ -469,12 +520,25 @@ static int read_file(void *v, const char *path, uint64_t pos, void *b, uint32_t 
 {
     return file_io(v, path, pos, b, n, 0);
 }
+static int guarded_read_file(void *v, const char *path, uint64_t pos, void *b, uint32_t n)
+{
+    if (!v2_enter_operation()) return IFS_FS_BUSY;
+    return v2_leave_operation(read_file(v,path,pos,b,n));
+}
+
 #if !defined(IFS_EXT2_FIRMWARE_BUILD)
 static int write_file(void *v, const char *path, uint64_t pos,
                       const void *b, uint32_t n)
 {
     return file_io(v, path, pos, (void *)b, n, 1);
 }
+static int guarded_write_file(void *v, const char *path, uint64_t pos,
+                      const void *b, uint32_t n)
+{
+    if (!v2_enter_operation()) return IFS_FS_BUSY;
+    return v2_leave_operation(write_file(v,path,pos,b,n));
+}
+
 #endif
 
 /* Expose the canonical EXT2 block map through Common V2. This is an
@@ -545,11 +609,20 @@ done:
     unscratch(v, work);
     return rc;
 }
+static int guarded_extent_map(void *volume, const char *path, uint64_t first_extent,
+                      IfsFsExtentV2 *extents, uint32_t capacity,
+                      uint32_t *written)
+{
+    if (written) *written=0u;
+    if (!v2_enter_operation()) return IFS_FS_BUSY;
+    return v2_leave_operation(extent_map(volume,path,first_extent,extents,capacity,written));
+}
+
 
 static const IfsFsDefragOpsV2 defrag_group = {
     .header = { IFS_FS_GROUP_ABI_V2, sizeof(IfsFsDefragOpsV2),
         IFS_FS_GROUP_DEFRAG, 0u, IFS_FS_DEFRAG_MAP },
-    .map = extent_map
+    .map = guarded_extent_map
 };
 
 /* Advertise no create/remove/resize/repair until the canonical
@@ -566,6 +639,12 @@ static int volume_query(void *mounted, IfsFsVolumeInfoV2 *out)
     out->free_bytes = v->media.fs.free_blocks * v->media.fs.block_size;
     return IFS_FS_OK;
 }
+static int guarded_volume_query(void *mounted, IfsFsVolumeInfoV2 *out)
+{
+    if (!v2_enter_operation()) return IFS_FS_BUSY;
+    return v2_leave_operation(volume_query(mounted,out));
+}
+
 static int volume_sync(void *mounted)
 {
     CommonVolume *v = session_lookup(mounted);
@@ -574,6 +653,12 @@ static int volume_sync(void *mounted)
     return v->host.flush && v->host.flush(v->host.context) == 0 ?
         IFS_FS_OK : IFS_FS_IO_ERROR;
 }
+static int guarded_volume_sync(void *mounted)
+{
+    if (!v2_enter_operation()) return IFS_FS_BUSY;
+    return v2_leave_operation(volume_sync(mounted));
+}
+
 #if !defined(IFS_EXT2_FIRMWARE_BUILD)
 /* Native EXT2 empty-volume formatting. The filesystem owns every on-disk
  * record; the caller provides only the exclusive, durable Common V2 lease.
@@ -723,6 +808,13 @@ static int format_ext2(const IfsFsHostRuntimeV2 *h,uint32_t variant,
     rc=probe(h,&observed);
     return rc!=IFS_FS_OK?rc:observed==2u?IFS_FS_OK:IFS_FS_CORRUPT;
 }
+static int guarded_format_ext2(const IfsFsHostRuntimeV2 *h,uint32_t variant,
+                        const char *label,uint32_t flags)
+{
+    if (!v2_enter_operation()) return IFS_FS_BUSY;
+    return v2_leave_operation(format_ext2(h,variant,label,flags));
+}
+
 #endif /* hosted format */
 
 static const IfsFsVolumeOpsV2 volume_group = {
@@ -732,10 +824,10 @@ static const IfsFsVolumeOpsV2 volume_group = {
         | IFS_FS_VOLUME_FORMAT
 #endif
     },
-    .query = volume_query,
-    .sync = volume_sync
+    .query = guarded_volume_query,
+    .sync = guarded_volume_sync
 #if !defined(IFS_EXT2_FIRMWARE_BUILD)
-    , .format = format_ext2
+    , .format = guarded_format_ext2
 #endif
 };
 /* V2 CORE directly owns the implemented production read/write and namespace
@@ -751,14 +843,14 @@ static const IfsFsCoreOpsV2 core_group = {
 #else
         IFS_FS_CORE_READ | IFS_FS_CORE_WRITE},
 #endif
-    .probe = probe,
-    .mount = mount,
-    .unmount = unmount,
-    .stat = stat_path,
-    .directory_entry = directory_entry,
-    .read = read_file,
+    .probe = guarded_probe,
+    .mount = guarded_mount,
+    .unmount = guarded_unmount,
+    .stat = guarded_stat_path,
+    .directory_entry = guarded_directory_entry,
+    .read = guarded_read_file,
 #if !defined(IFS_EXT2_FIRMWARE_BUILD)
-    .write = write_file
+    .write = guarded_write_file
 #endif
 };
 static const IfsFsGroupHeaderV2 *query_group(uint32_t group,
