@@ -271,6 +271,15 @@ int main(void)
             core->read(mounted, "/hello", 5u, content, 1u) != IFS_FS_INVALID ||
             memcmp(content, "hello", 5u))
             return fail("Native V2 EXT2 stat/list/read is incorrect");
+        const IfsFsMetadataOpsV2 *meta=(const void *)ifs_fs_group_v2(v2,IFS_FS_GROUP_METADATA);
+        IfsFsMetadataV2 metadata={.structure_bytes=sizeof(metadata)};
+        if (!meta || meta->header.capabilities!=IFS_FS_META_GET_MODE ||
+            !meta->get || meta->set ||
+            meta->get(mounted,"/hello",&metadata)!=IFS_FS_OK ||
+            metadata.mask!=IFS_FS_META_GET_MODE ||
+            metadata.mode!=0100644u || metadata.owner!=1000u || metadata.group!=1000u ||
+            meta->get(mounted,"/absent",&metadata)!=IFS_FS_NOT_FOUND)
+            return fail("Common V2 EXT2 inode ownership and permissions");
         active_volume=mounted;
         unmount_during_read=core;
         observed_unmount=IFS_FS_INVALID;

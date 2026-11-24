@@ -853,6 +853,35 @@ static const IfsFsCoreOpsV2 core_group = {
     .write = guarded_write_file
 #endif
 };
+/* Expose ownership and permissions from the same verified inode used
+ * by STAT. No second parser and no metadata mutation are required.
+ * GET_TIMES is not advertised: classic inodes lack a creation time. */
+static int metadata_get(void *volume,const char *path,IfsFsMetadataV2 *out)
+{
+    if (!out || out->structure_bytes<sizeof(*out)) return IFS_FS_INVALID;
+    if (!v2_enter_operation()) return IFS_FS_BUSY;
+    CommonVolume *v=session_lookup(volume);
+    if (!valid(v)) return v2_leave_operation(IFS_FS_INVALID);
+    void *work=scratch(v);
+    if (!work) return v2_leave_operation(IFS_FS_NO_MEMORY);
+    IfsExt2Inode inode;
+    const char *name=NULL;
+    uint32_t length=0;
+    int rc=resolve(v,path,&inode,&name,&length,work);
+    if (rc==IFS_FS_OK) {
+        *out=(IfsFsMetadataV2){.structure_bytes=sizeof(*out),
+            .mask=IFS_FS_META_GET_MODE,.mode=inode.mode,
+            .owner=inode.uid,.group=inode.gid};
+    }
+    unscratch(v,work);
+    return v2_leave_operation(rc);
+}
+static const IfsFsMetadataOpsV2 metadata_group={
+    .header={IFS_FS_GROUP_ABI_V2,sizeof(metadata_group),
+             IFS_FS_GROUP_METADATA,0u,IFS_FS_META_GET_MODE},
+    .get=metadata_get
+};
+
 static const IfsFsGroupHeaderV2 *query_group(uint32_t group,
                                               uint32_t minimum,
                                               uint32_t maximum)
@@ -862,6 +891,7 @@ static const IfsFsGroupHeaderV2 *query_group(uint32_t group,
     if (group == IFS_FS_GROUP_CORE) return &core_group.header;
     if (group == IFS_FS_GROUP_VOLUME) return &volume_group.header;
     if (group == IFS_FS_GROUP_DEFRAG) return &defrag_group.header;
+    if (group == IFS_FS_GROUP_METADATA) return &metadata_group.header;
     return NULL;
 }
 static const IfsFsModuleApiV2 common_v2 = {
@@ -875,7 +905,8 @@ static const IfsFsModuleApiV2 common_v2 = {
 #endif
     .group_mask = IFS_FS_GROUP_BIT(IFS_FS_GROUP_CORE) |
                   IFS_FS_GROUP_BIT(IFS_FS_GROUP_VOLUME) |
-                  IFS_FS_GROUP_BIT(IFS_FS_GROUP_DEFRAG),
+                  IFS_FS_GROUP_BIT(IFS_FS_GROUP_DEFRAG) |
+                  IFS_FS_GROUP_BIT(IFS_FS_GROUP_METADATA),
     .query_group = query_group
 };
 
