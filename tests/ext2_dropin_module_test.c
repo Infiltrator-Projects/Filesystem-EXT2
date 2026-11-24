@@ -262,6 +262,15 @@ int main(void)
             !mounted || details.block_bytes != BLOCK_SIZE ||
             details.total_bytes != sizeof disk.bytes)
             return fail("Native V2 probe/mount rejected genuine EXT2 media");
+        const IfsFsVolumeOpsV2 *label_ops=(const void *)ifs_fs_group_v2(v2,IFS_FS_GROUP_VOLUME);
+        char label[17], narrow_label[2]={'X','X'};
+        uint32_t label_bytes=UINT32_MAX;
+        if (!label_ops || !label_ops->label || label_ops->set_label ||
+            label_ops->label(mounted,label,sizeof(label),&label_bytes)!=IFS_FS_OK ||
+            label_bytes!=11u || strcmp(label,"engine-test") ||
+            label_ops->label(mounted,narrow_label,sizeof(narrow_label),&label_bytes)!=IFS_FS_NO_SPACE ||
+            label_bytes || narrow_label[0]!='X' || narrow_label[1]!='X')
+            return fail("Common V2 EXT2 label and bounded output");
         if (core->stat(mounted, "/hello", &entry) != IFS_FS_OK ||
             strcmp(name, "hello") || entry.size_bytes != 5u ||
             core->directory_entry(mounted, "/", 0u, &entry) != IFS_FS_OK ||

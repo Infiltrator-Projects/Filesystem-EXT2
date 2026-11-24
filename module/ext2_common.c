@@ -817,14 +817,35 @@ static int guarded_format_ext2(const IfsFsHostRuntimeV2 *h,uint32_t variant,
 
 #endif /* hosted format */
 
+/* The canonical mount parser retains the 16-byte superblock label.
+ * Copy its bounded contents only when the entire name and terminator fit.
+ * No on-disk label mutation is advertised. */
+static int volume_label(void *mounted,char *out,uint32_t capacity,uint32_t *bytes)
+{
+    if (!bytes) return IFS_FS_INVALID;
+    *bytes=0u;
+    if (!out || !capacity) return IFS_FS_INVALID;
+    if (!v2_enter_operation()) return IFS_FS_BUSY;
+    CommonVolume *v=session_lookup(mounted);
+    if (!valid(v)) return v2_leave_operation(IFS_FS_INVALID);
+    uint32_t length=0u;
+    while (length<16u && v->media.fs.label[length]) ++length;
+    if (length>=capacity) return v2_leave_operation(IFS_FS_NO_SPACE);
+    memcpy(out,v->media.fs.label,length);
+    out[length]=0;
+    *bytes=length;
+    return v2_leave_operation(IFS_FS_OK);
+}
+
 static const IfsFsVolumeOpsV2 volume_group = {
     .header = { IFS_FS_GROUP_ABI_V2, sizeof(IfsFsVolumeOpsV2),
-        IFS_FS_GROUP_VOLUME, 0u, IFS_FS_VOLUME_QUERY | IFS_FS_VOLUME_SYNC
+        IFS_FS_GROUP_VOLUME, 0u, IFS_FS_VOLUME_QUERY | IFS_FS_VOLUME_SYNC | IFS_FS_VOLUME_LABEL_GET
 #if !defined(IFS_EXT2_FIRMWARE_BUILD)
         | IFS_FS_VOLUME_FORMAT
 #endif
     },
     .query = guarded_volume_query,
+    .label = volume_label,
     .sync = guarded_volume_sync
 #if !defined(IFS_EXT2_FIRMWARE_BUILD)
     , .format = guarded_format_ext2
