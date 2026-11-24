@@ -8,7 +8,8 @@ int main(void)
     if (!ifs_fs_api_v2_valid(m, "ext2") ||
         m->group_mask != (IFS_FS_GROUP_BIT(IFS_FS_GROUP_CORE) |
                           IFS_FS_GROUP_BIT(IFS_FS_GROUP_VOLUME) |
-                          IFS_FS_GROUP_BIT(IFS_FS_GROUP_DEFRAG))) {
+                          IFS_FS_GROUP_BIT(IFS_FS_GROUP_DEFRAG) |
+                          IFS_FS_GROUP_BIT(IFS_FS_GROUP_METADATA))) {
         fputs("EXT2 is not a genuine native V2-only provider\n", stderr);
         return 1;
     }
@@ -24,5 +25,9 @@ int main(void)
         !defrag->map || defrag->plan || defrag->execute ||
         defrag->verify || defrag->recover || defrag->release_plan)
         return 1;
+    const IfsFsMetadataOpsV2 *metadata =
+        (const IfsFsMetadataOpsV2 *)ifs_fs_group_v2(m, IFS_FS_GROUP_METADATA);
+    if (!metadata || metadata->header.capabilities != IFS_FS_META_GET_MODE ||
+        !metadata->get || metadata->set) return 1;
     return 0;
 }
