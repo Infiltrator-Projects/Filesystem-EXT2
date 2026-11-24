@@ -72,6 +72,8 @@ int main(void)
                   (IFS_FS_PROFILE_FREESTANDING | IFS_FS_PROFILE_FIRMWARE),
               "wrong firmware profile"))
         return 1;
+    const IfsFsVolumeOpsV2 *vol=(const void*)ifs_fs_group_v2(api,IFS_FS_GROUP_VOLUME);
+    if(check(vol && !vol->format,"firmware must not advertise format"))return 1;
     core = (const IfsFsCoreOpsV2 *)ifs_fs_group_v2(api, IFS_FS_GROUP_CORE);
     if (check(core != NULL && core->mount != NULL, "CORE.MOUNT missing"))
         return 1;

@@ -98,6 +98,16 @@ target_link_libraries(ext-core PUBLIC InfiltratrCommon::Common OpenSSL::Crypto S
   target_include_directories(ext-ext2-module-test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include" "${CMAKE_CURRENT_SOURCE_DIR}/compat")
   target_link_libraries(ext-ext2-module-test PRIVATE ext-ext2-driver InfiltratrCommon::Common)
   add_test(NAME ext-ext2-module-contract COMMAND ext-ext2-module-test)
+  add_executable(ext2-native-format-test tests/test_ext2_format.c)
+  target_link_libraries(ext2-native-format-test PRIVATE ext-ext2-driver InfiltratrCommon::Common)
+  target_compile_options(ext2-native-format-test PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  add_test(NAME ext2-native-format COMMAND ext2-native-format-test)
+  find_program(EXT2_E2FSCK NAMES e2fsck)
+  if(EXT2_E2FSCK)
+    add_test(NAME ext2-native-format-independent-oracle
+      COMMAND sh "${CMAKE_CURRENT_SOURCE_DIR}/tests/ext2_format_oracle.sh"
+              "$<TARGET_FILE:ext2-native-format-test>" "${EXT2_E2FSCK}")
+  endif()
   # Prove the original EXT2 drop-in read/write interface survives the
   # addition of the Test Media fixture and full EXT defrag interface.
   add_executable(ext2-dropin-module-test tests/ext2_dropin_module_test.c)
