@@ -309,17 +309,23 @@ static int guarded_mount(const IfsFsHostRuntimeV2 *h, void **out,
 }
 
 
-static int valid(const CommonVolume *v)
+static int mounted_session(const CommonVolume *v)
 {
     return v && v->media.mounted && v->host.read_at &&
         v->media.host.device.user == v;
+}
+/* A failed metadata checkpoint invalidates the mounted view. Only
+ * unmount and plan disposal may access that session until replay. */
+static int valid(const CommonVolume *v)
+{
+    return mounted_session(v) && !v->mutation_fault;
 }
 
 static int unmount(void *volume)
 {
     CommonVolume *v=session_lookup(volume);
     IfsFsHostRuntimeV2 h;
-    if (!valid(v)) return IFS_FS_INVALID;
+    if (!mounted_session(v)) return IFS_FS_INVALID;
     for(size_t i=0;i<IFS_EXT_V2_MAX_SESSIONS;++i) {
         if(sessions[i].token==(uintptr_t)volume) {
             sessions[i].token=0u;
@@ -587,7 +593,7 @@ static void alloc_p32(uint8_t *p,uint32_t n)
 {alloc_p16(p,n);alloc_p16(p+2,n>>16);}
 static int alloc_geometry(CommonVolume *v)
 {
-    if(!valid(v))return IFS_FS_INVALID;
+    if(!mounted_session(v))return IFS_FS_INVALID;
     if(v->mutation_fault)return IFS_FS_IO_ERROR;
     const IfsExt2Volume *f=&v->media.fs;
     if(f->block_size!=ALLOC_BS || f->inode_size!=256u ||
@@ -911,7 +917,7 @@ static int write_file(void *v, const char *path, uint64_t pos,
                       const void *b, uint32_t n)
 {
     CommonVolume *mounted=session_lookup(v);
-    if(valid(mounted) && mounted->mutation_fault)return IFS_FS_IO_ERROR;
+    if(mounted_session(mounted) && mounted->mutation_fault)return IFS_FS_IO_ERROR;
     if(valid(mounted) && mounted->reloc_plan)return IFS_FS_BUSY;
     int rc=file_io(v,path,pos,(void *)b,n,1);
     return rc==IFS_FS_UNSUPPORTED?alloc_append(v,path,pos,b,n):rc;
@@ -1397,7 +1403,7 @@ static void guarded_reloc_release(void *volume,void *plan)
 {
     if(!v2_enter_operation())return;
     CommonVolume *v=session_lookup(volume);
-    if(valid(v) && plan && (uintptr_t)plan==v->reloc_token)reloc_discard(v);
+    if(mounted_session(v) && plan && (uintptr_t)plan==v->reloc_token)reloc_discard(v);
     (void)v2_leave_operation(IFS_FS_OK);
 }
 

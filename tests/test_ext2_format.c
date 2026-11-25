@@ -8,9 +8,10 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/random.h>
+#include <sys/wait.h>
 #include <errno.h>
 extern const IfsFsModuleApiV2 *infiltrator_filesystem_api_v2(void);
-typedef struct {int fd;uint64_t bytes;uint32_t sector;unsigned writes,flushes,fail_flush;} Media;
+typedef struct {int fd;uint64_t bytes;uint32_t sector;unsigned writes,flushes,fail_flush,crash_flush;} Media;
 static int read_at(void *ctx,uint64_t at,void *p,uint32_t n)
 {
     Media *m=ctx;
@@ -28,7 +29,9 @@ static int flush(void *ctx)
 {
     Media *m=ctx;
     if(++m->flushes==m->fail_flush)return -1;
-    return fsync(m->fd);
+    int rc=fsync(m->fd);
+    if(!rc && m->crash_flush==m->flushes)_exit(86);
+    return rc;
 }
 static void *allocate(void *ctx,size_t n){(void)ctx;return malloc(n);}
 static void release(void *ctx,void *p){(void)ctx;free(p);}
@@ -188,7 +191,34 @@ int main(int argc,char **argv)
     CHECK(map->execute(session,plan,&moved)==IFS_FS_ACCESS);
     map->release_plan(session,plan);plan=NULL;
     CHECK(core->unmount(session)==IFS_FS_OK);
-    CHECK(core->mount(&h,&session,&info)==IFS_FS_OK);
+    /* Crash after durable publication of both redo headers, before
+     * checkpointing. The parent must observe a positive replay and every
+     * original payload must survive. Never exercise an error-unwind path. */
+    pid_t child=fork();
+    CHECK(child>=0);
+    if(child==0){
+        void *cp=NULL,*cs=NULL;
+        uint64_t cm=0u;
+        if(core->mount(&h,&cs,&info)!=IFS_FS_OK ||
+           map->plan(cs,"/",0u,&cp)!=IFS_FS_OK || !cp)_exit(87);
+        m.crash_flush=m.flushes+3u;
+        (void)map->execute(cs,cp,&cm);
+        _exit(88);
+    }
+    int ws=0;
+    CHECK(waitpid(child,&ws,0)==child && WIFEXITED(ws) && WEXITSTATUS(ws)==86);
+    session=NULL;
+    CHECK(core->mount(&ro,&session,&info)==IFS_FS_ACCESS && !session);
+    CHECK(core->mount(&h,&session,&info)==IFS_FS_OK && session);
+    uint64_t replayed=0u;
+    CHECK(map->recover(session,0u,&replayed)==IFS_FS_OK && replayed==1u);
+    CHECK(map->recover(session,0u,&replayed)==IFS_FS_OK && !replayed);
+    for(unsigned i=0u;i<65u;++i) {
+        CHECK(core->read(session,"/A.BIN",(uint64_t)i*sizeof(a),copy,sizeof(copy))==IFS_FS_OK);
+        CHECK(!memcmp(copy,a,sizeof(a)));
+        CHECK(core->read(session,"/B.BIN",(uint64_t)i*sizeof(bb),copy,sizeof(copy))==IFS_FS_OK);
+        CHECK(!memcmp(copy,bb,sizeof(bb)));
+    }
     CHECK(map->plan(session,"/",10u,&plan)==IFS_FS_OK && plan);
     CHECK(core->create(session,"/BLOCKED.BIN",IFS_FS_ENTRY_FILE)==IFS_FS_BUSY);
     CHECK(core->write(session,"/A.BIN",0u,a,1u)==IFS_FS_BUSY);
