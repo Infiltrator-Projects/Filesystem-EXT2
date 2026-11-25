@@ -848,85 +848,73 @@ static int guarded_write_file(void *v, const char *path, uint64_t pos,
 /* Expose the canonical EXT2 block map through Common V2. This is an
  * actual verified extent enumerator, not a relocation capability. No planner
  * or execute callback is advertised until their transaction engine exists. */
-static int extent_map(void *volume, const char *path, uint64_t first_extent,
-                      IfsFsExtentV2 *extents, uint32_t capacity,
-                      uint32_t *written)
+/* Publish maximal physically contiguous extents, not individual blocks.
+ * Pagination is by extent number. Scan through EOF even if the page is
+ * already full: a later corrupt block must never qualify a prefix. */
+static void emit_map_run(const IfsFsExtentV2 *run,uint64_t first,
+                         uint64_t *index,IfsFsExtentV2 *out,
+                         uint32_t capacity,uint32_t *count)
 {
-    CommonVolume *v = session_lookup(volume);
+    if(!run->length)return;
+    if(*index>=first && *count<capacity)out[(*count)++]=*run;
+    ++*index;
+}
+static int extent_map(void *volume,const char *path,uint64_t first_extent,
+                      IfsFsExtentV2 *extents,uint32_t capacity,uint32_t *written)
+{
+    CommonVolume *v=session_lookup(volume);
     IfsExt2Inode inode;
-    uint64_t logical, index = 0u;
-    uint64_t blocks;
-    uint32_t count = 0u;
-    void *work;
-    int rc;
-    if (!valid(v) || !path || !written || !capacity || !extents)
+    uint64_t index=0u;
+    uint32_t count=0u;
+    IfsFsExtentV2 run={0};
+    if(written)*written=0u;
+    if(!valid(v) || !path || !written || !capacity || !extents)
         return IFS_FS_INVALID;
-    *written = 0u;
-    work = scratch(v);
-    if (!work) return IFS_FS_NO_MEMORY;
-    rc = resolve(v, path, &inode, NULL, NULL, work);
-    if (rc) goto done;
+    void *work=scratch(v);
+    if(!work)return IFS_FS_NO_MEMORY;
+    int rc=resolve(v,path,&inode,NULL,NULL,work);
+    if(rc!=IFS_FS_OK)goto done;
     const IfsExt2NodeType type=ifs_ext2_inode_type(&inode);
-    if (type != IFS_EXT2_NODE_REGULAR && type != IFS_EXT2_NODE_DIRECTORY) {
-        rc = IFS_FS_UNSUPPORTED;
-        goto done;
+    if(type!=IFS_EXT2_NODE_REGULAR && type!=IFS_EXT2_NODE_DIRECTORY){
+        rc=IFS_FS_UNSUPPORTED;goto done;
     }
-    blocks = inode.size / v->media.fs.block_size +
-        (inode.size % v->media.fs.block_size != 0u);
-    if (blocks > UINT32_MAX) {
-        rc = IFS_FS_UNSUPPORTED;
-        goto done;
-    }
-    for (logical = 0u; logical < blocks; ++logical) {
-        ifs_ext2_u64 physical = 0u;
-        int hole = 0;
-        IfsExt2Status native_status;
-        if (v->host.cancelled && (logical & 255u) == 0u &&
-            v->host.cancelled(v->host.context)) {
-            rc = IFS_FS_BUSY;
-            goto done;
-        }
-        native_status = ifs_ext2_map_file_block(&v->media.fs, &inode,
-            (ifs_ext2_u32)logical, &physical, &hole,
-            work, v->media.fs.block_size);
-        if (native_status != IFS_EXT2_OK) {
-            rc = status(native_status);
-            goto done;
-        }
-        if (hole) {
+    const uint64_t unit=v->media.fs.block_size;
+    if(!unit){rc=IFS_FS_CORRUPT;goto done;}
+    const uint64_t blocks=inode.size/unit+(inode.size%unit!=0u);
+    if(blocks>UINT32_MAX){rc=IFS_FS_UNSUPPORTED;goto done;}
+    for(uint64_t logical=0u;logical<blocks;++logical){
+        ifs_ext2_u64 physical=0u;
+        int hole=0;
+        if(v->host.cancelled && !(logical&255u) &&
+           v->host.cancelled(v->host.context)){rc=IFS_FS_BUSY;goto done;}
+        IfsExt2Status st=ifs_ext2_map_file_block(&v->media.fs,&inode,
+            (ifs_ext2_u32)logical,&physical,&hole,work,(uint32_t)unit);
+        if(st!=IFS_EXT2_OK){rc=status(st);goto done;}
+        if(hole){
             if(type==IFS_EXT2_NODE_DIRECTORY){rc=IFS_FS_CORRUPT;goto done;}
-            continue;
+            emit_map_run(&run,first_extent,&index,extents,capacity,&count);
+            run=(IfsFsExtentV2){0};continue;
         }
-        native_status = ifs_ext2_validate_allocated_data_block(
-            &v->media.fs, physical, work, v->media.fs.block_size);
-        if (native_status != IFS_EXT2_OK) {
-            rc = status(native_status);
-            goto done;
-        }
-        if (index++ < first_extent) continue;
-        /* Return logical bytes, not allocation padding after EOF.
-         * A one-byte file has a one-byte mapped extent, while the
-         * provider's allocation accounting still owns the entire block. */
-        const uint64_t unit=v->media.fs.block_size;
-        const uint64_t off=logical*unit;
-        const uint64_t length=inode.size-off<unit?inode.size-off:unit;
+        st=ifs_ext2_validate_allocated_data_block(&v->media.fs,physical,work,(uint32_t)unit);
+        if(st!=IFS_EXT2_OK){rc=status(st);goto done;}
         if(physical>UINT64_MAX/unit){rc=IFS_FS_CORRUPT;goto done;}
-        const uint64_t at=physical*unit;
-        if(at>v->host.volume_bytes || length>v->host.volume_bytes-at){
+        const uint64_t off=logical*unit,at=physical*unit;
+        const uint64_t bytes=inode.size-off<unit?inode.size-off:unit;
+        if(at>v->host.volume_bytes || bytes>v->host.volume_bytes-at){
             rc=IFS_FS_CORRUPT;goto done;
         }
-        extents[count].logical_offset = off;
-        extents[count].physical_offset = at;
-        extents[count].length = length;
-        extents[count].flags = 0u;
-        extents[count].reserved = 0u;
-        if (++count == capacity) break;
+        if(run.length && run.logical_offset+run.length==off &&
+           run.physical_offset+run.length==at){
+            run.length+=bytes;continue;
+        }
+        emit_map_run(&run,first_extent,&index,extents,capacity,&count);
+        run=(IfsFsExtentV2){.logical_offset=off,.physical_offset=at,.length=bytes};
     }
-    *written = count;
-    rc = count ? IFS_FS_OK : IFS_FS_END;
+    emit_map_run(&run,first_extent,&index,extents,capacity,&count);
+    *written=count;
+    rc=count?IFS_FS_OK:IFS_FS_END;
 done:
-    unscratch(v, work);
-    return rc;
+    unscratch(v,work);return rc;
 }
 static int guarded_extent_map(void *volume, const char *path, uint64_t first_extent,
                       IfsFsExtentV2 *extents, uint32_t capacity,

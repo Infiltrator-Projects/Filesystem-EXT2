@@ -141,13 +141,29 @@ int main(int argc,char **argv)
         CHECK(!memcmp(copy,bb,sizeof(bb)));
     }
     const IfsFsDefragOpsV2 *map=(const void*)ifs_fs_group_v2(api,IFS_FS_GROUP_DEFRAG);
-    /* Compare the last block of the first 64 KiB append with the
-     * first block of the second. B's intervening allocation proves the
-     * gap is caused by the actual interleaved file writes. */
+    /* Walk actual physical runs through terminal END, proving no
+     * adjacent extents were artificially split and no data was omitted.
+     * Interleaved appends must produce a genuine physical discontinuity. */
     IfsFsExtentV2 ext[2];uint32_t written=0;
-    CHECK(map && map->map(session,"/A.BIN",15u,ext,2,&written)==IFS_FS_OK && written==2u);
-    CHECK(ext[0].logical_offset==15u*4096u && ext[1].logical_offset==16u*4096u);
-    CHECK(ext[1].physical_offset!=ext[0].physical_offset+ext[0].length);
+    CHECK(map && map->map);
+    uint64_t logical=0u,previous_end=0u,runs=0u;
+    unsigned gaps=0u;
+    for(uint64_t page=0u;;){
+        CHECK(page<1041u);
+        int rc=map->map(session,"/A.BIN",page,ext,2u,&written);
+        if(rc==IFS_FS_END){CHECK(!written);break;}
+        CHECK(rc==IFS_FS_OK && written && written<=2u);
+        for(uint32_t i=0u;i<written;++i){
+            CHECK(ext[i].logical_offset==logical && ext[i].length &&
+                  !ext[i].flags && !ext[i].reserved &&
+                  ext[i].length<=65u*sizeof(a)-logical);
+            if(runs){CHECK(ext[i].physical_offset!=previous_end);++gaps;}
+            previous_end=ext[i].physical_offset+ext[i].length;
+            logical+=ext[i].length;++runs;
+        }
+        page+=written;
+    }
+    CHECK(logical==65u*sizeof(a) && gaps>=64u && runs<1040u);
     for(unsigned i=0u;i<sizeof(sizes)/sizeof(sizes[0]);++i) {
         char path[32];(void)snprintf(path,sizeof(path),"/EDGE%u.BIN",i);
         uint64_t offset=0u;
