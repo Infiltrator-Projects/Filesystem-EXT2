@@ -21,9 +21,9 @@ int main(void)
         return 1;
     const IfsFsDefragOpsV2 *defrag =
         (const IfsFsDefragOpsV2 *)ifs_fs_group_v2(m, IFS_FS_GROUP_DEFRAG);
-    if (!defrag || defrag->header.capabilities != IFS_FS_DEFRAG_MAP ||
-        !defrag->map || defrag->plan || defrag->execute ||
-        defrag->verify || defrag->recover || defrag->release_plan)
+    if (!defrag || defrag->header.capabilities != IFS_FS_DEFRAG_ALL ||
+        !defrag->map || !defrag->plan || !defrag->execute ||
+        !defrag->verify || !defrag->recover || !defrag->release_plan)
         return 1;
     const IfsFsMetadataOpsV2 *metadata =
         (const IfsFsMetadataOpsV2 *)ifs_fs_group_v2(m, IFS_FS_GROUP_METADATA);

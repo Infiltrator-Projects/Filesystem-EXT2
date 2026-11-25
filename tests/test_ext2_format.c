@@ -100,7 +100,7 @@ int main(int argc,char **argv)
     IfsFsEntryV2 entry={.structure_bytes=sizeof(entry),.name=name,.name_capacity=sizeof(name)};
     CHECK(core->probe(&ro,&v)==IFS_FS_OK && v==2u);
     CHECK(core->mount(&ro,&session,&info)==IFS_FS_OK && session);
-    CHECK(info.variant==2u && info.block_bytes==4096u && info.total_bytes==m.bytes);
+    CHECK(info.variant==2u && info.block_bytes==4096u && info.total_bytes+98u*4096u==m.bytes);
     CHECK(info.free_bytes>0u && info.free_bytes<info.total_bytes);
     CHECK(core->stat(session,"/",&entry)==IFS_FS_OK && entry.type==IFS_FS_ENTRY_DIRECTORY);
     CHECK(core->directory_entry(session,"/",0u,&entry)==IFS_FS_END);
@@ -181,8 +181,34 @@ int main(int argc,char **argv)
     }
     CHECK(map->map(session,"/",0u,ext,2u,&written)==IFS_FS_OK && written>0u &&
           ext[0].logical_offset==0u && ext[0].length==4096u);
+    CHECK(map->header.capabilities==IFS_FS_DEFRAG_ALL);
+    void *plan=NULL;
+    CHECK(map->plan(session,"/",10u,&plan)==IFS_FS_OK && plan);
+    uint64_t moved=0u;
+    CHECK(map->execute(session,plan,&moved)==IFS_FS_ACCESS);
+    map->release_plan(session,plan);plan=NULL;
     CHECK(core->unmount(session)==IFS_FS_OK);
-    puts("EXT2 Common V2 format, create, interleaved append, persistent read and native extent map PASS");
+    CHECK(core->mount(&h,&session,&info)==IFS_FS_OK);
+    CHECK(map->plan(session,"/",10u,&plan)==IFS_FS_OK && plan);
+    CHECK(core->create(session,"/BLOCKED.BIN",IFS_FS_ENTRY_FILE)==IFS_FS_BUSY);
+    CHECK(core->write(session,"/A.BIN",0u,a,1u)==IFS_FS_BUSY);
+    CHECK(map->execute(session,plan,&moved)==IFS_FS_OK && moved>0u);
+    CHECK(map->verify(session,plan)==IFS_FS_OK);
+    map->release_plan(session,plan);
+    uint64_t recovered=UINT64_MAX;
+    CHECK(map->recover(session,0u,&recovered)==IFS_FS_OK && !recovered);
+    CHECK(core->unmount(session)==IFS_FS_OK);
+    CHECK(core->mount(&ro,&session,&info)==IFS_FS_OK);
+    CHECK(map->map(session,"/A.BIN",0u,ext,2u,&written)==IFS_FS_OK &&
+          written==1u && ext[0].length==65u*sizeof(a));
+    for(unsigned i=0u;i<65u;++i) {
+        CHECK(core->read(session,"/A.BIN",(uint64_t)i*sizeof(a),copy,sizeof(copy))==IFS_FS_OK);
+        CHECK(!memcmp(copy,a,sizeof(a)));
+        CHECK(core->read(session,"/B.BIN",(uint64_t)i*sizeof(bb),copy,sizeof(copy))==IFS_FS_OK);
+        CHECK(!memcmp(copy,bb,sizeof(bb)));
+    }
+    CHECK(core->unmount(session)==IFS_FS_OK);
+    puts("EXT2 Common V2 native format, allocation, real map, journalled relocation, growth and payload verification PASS");
     result=0;
 done:
     close(m.fd);

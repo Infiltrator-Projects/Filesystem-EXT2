@@ -354,7 +354,7 @@ int main(void)
                 v2, IFS_FS_GROUP_DEFRAG);
         IfsFsExtentV2 mapped[2] = {{0}};
         uint32_t mapped_count = 0u;
-        if (!defrag || !defrag->map || defrag->plan || defrag->execute ||
+        if (!defrag || !defrag->map || !defrag->plan || !defrag->execute ||
             defrag->map(mounted, "/hello", 0u, mapped, 2u,
                         &mapped_count) != IFS_FS_OK ||
             mapped_count != 1u || mapped[0].logical_offset != 0u ||

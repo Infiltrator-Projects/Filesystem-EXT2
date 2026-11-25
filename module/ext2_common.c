@@ -7,6 +7,10 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdatomic.h>
+#if !defined(IFS_EXT2_FIRMWARE_BUILD)
+#include <openssl/evp.h>
+#include "ext2_reloc_journal.h"
+#endif
 
 /* Serialize access to the native engine and the session table. The V2
  * host must never be able to retire an active volume from an I/O callback.
@@ -35,7 +39,15 @@ typedef struct {
     IfsExt2DropInVolume media;
     uint32_t allocation_hint;
     int mutation_fault;
+#if !defined(IFS_EXT2_FIRMWARE_BUILD)
+    void *reloc_plan;
+    uintptr_t reloc_token;
+    uint64_t mount_recovered;
+#endif
 } CommonVolume;
+#if !defined(IFS_EXT2_FIRMWARE_BUILD)
+static void reloc_discard(CommonVolume *v);
+#endif
 
 /* A V2 caller holds an opaque lifetime token, never an allocator address.
  * Reusing the same allocation after unmount must not revive stale handles.
@@ -212,7 +224,14 @@ static int probe(const IfsFsHostRuntimeV2 *h, uint32_t *variant)
     retain_host(&v.host, h);
     io = native_io(&v);
     result = engine()->mount(&v.media, &io, 0);
-    if (result != IFS_EXT2_OK) return status(result);
+    if (result != IFS_EXT2_OK) {
+#if !defined(IFS_EXT2_FIRMWARE_BUILD)
+        uint8_t sb[EJ_BS],header[EJ_BS];uint32_t total=0u;
+        if(result!=IFS_EXT2_ERROR_IO && ej_load(h,sb,header,&total)==IFS_FS_OK &&
+           ej_u32(header+12u)){*variant=2u;return IFS_FS_OK;}
+#endif
+        return status(result);
+    }
     v.media.mounted = 0u;
     *variant = 2u;
     return IFS_FS_OK;
@@ -242,6 +261,15 @@ static int mount(const IfsFsHostRuntimeV2 *h, void **out,
      * when it supplies a valid exclusive and durable Common V2 lease. */
     if (!(h->capabilities & IFS_FS_HOST_READ_ONLY))
         return IFS_FS_ACCESS;
+#else
+    uint64_t mount_recovered=0u;
+    const int writable=!(h->capabilities&IFS_FS_HOST_READ_ONLY);
+    for(size_t i=0u;i<IFS_EXT_V2_MAX_SESSIONS;++i)
+        if(sessions[i].token && (writable ||
+           !(sessions[i].volume->host.capabilities&IFS_FS_HOST_READ_ONLY)))
+            return IFS_FS_BUSY;
+    const int recovered=ej_mount(h,&mount_recovered);
+    if(recovered!=IFS_FS_OK)return recovered;
 #endif
     const size_t slot=session_free_slot();
     if (slot==IFS_EXT_V2_MAX_SESSIONS ||
@@ -250,6 +278,9 @@ static int mount(const IfsFsHostRuntimeV2 *h, void **out,
     if (!v) return IFS_FS_NO_MEMORY;
     memset(v, 0, sizeof(*v));
     retain_host(&v->host, h);
+#if !defined(IFS_EXT2_FIRMWARE_BUILD)
+    v->mount_recovered=mount_recovered;
+#endif
     io = native_io(v);
     allow_write = !(h->capabilities & IFS_FS_HOST_READ_ONLY) &&
         (h->capabilities & IFS_FS_HOST_EXCLUSIVE) && h->write_at && h->flush;
@@ -297,10 +328,14 @@ static int unmount(void *volume)
         }
     }
     h = v->host;
+#if !defined(IFS_EXT2_FIRMWARE_BUILD)
+    reloc_discard(v);
+#endif
     v->media.mounted = 0u;
     v->media.writable = 0u;
+    const int rc=v->mutation_fault?IFS_FS_IO_ERROR:IFS_FS_OK;
     h.release(h.context, v);
-    return IFS_FS_OK;
+    return rc;
 }
 static int guarded_unmount(void *volume)
 {
@@ -550,11 +585,9 @@ static void alloc_p16(uint8_t *p,uint32_t n)
 {p[0]=(uint8_t)n;p[1]=(uint8_t)(n>>8);}
 static void alloc_p32(uint8_t *p,uint32_t n)
 {alloc_p16(p,n);alloc_p16(p+2,n>>16);}
-static int alloc_profile(CommonVolume *v)
+static int alloc_geometry(CommonVolume *v)
 {
     if(!valid(v))return IFS_FS_INVALID;
-    if(!v->media.writable || (v->host.capabilities&IFS_FS_HOST_READ_ONLY))
-        return IFS_FS_ACCESS;
     if(v->mutation_fault)return IFS_FS_IO_ERROR;
     const IfsExt2Volume *f=&v->media.fs;
     if(f->block_size!=ALLOC_BS || f->inode_size!=256u ||
@@ -564,6 +597,14 @@ static int alloc_profile(CommonVolume *v)
        f->feature_incompat!=2u || f->feature_ro_compat!=2u ||
        f->state!=1u || f->super.first_inode!=11u ||
        v->host.logical_sector_bytes>ALLOC_BS)return IFS_FS_UNSUPPORTED;
+    return IFS_FS_OK;
+}
+static int alloc_profile(CommonVolume *v)
+{
+    const int rc=alloc_geometry(v);
+    if(rc!=IFS_FS_OK)return rc;
+    if(!v->media.writable || (v->host.capabilities&IFS_FS_HOST_READ_ONLY))
+        return IFS_FS_ACCESS;
     return IFS_FS_OK;
 }
 static void alloc_release(AllocTxn *t)
@@ -620,6 +661,42 @@ static int alloc_commit(AllocTxn *t)
     v->allocation_hint=t->hint;
     return IFS_FS_OK;
 }
+/* Relocation preserves total allocation and commits through the native redo
+ * area, never through the ordinary append allocator's rollback path. */
+static int ej_commit(AllocTxn *t)
+{
+    CommonVolume *v=t->v;
+    const IfsFsHostRuntimeV2 *h=&v->host;
+    uint8_t sb[EJ_BS],header[EJ_BS];uint32_t total=0u,count=0u;
+    if(t->blocks || t->inodes)return IFS_FS_CORRUPT;
+    int rc=ej_load(h,sb,header,&total);if(rc!=IFS_FS_OK)return rc;
+    if(ej_u32(header+12u))return IFS_FS_CORRUPT;
+    for(unsigned i=0u;i<t->count;++i)if(t->patches[i].dirty)++count;
+    rc=ej_header(header,total,sb+1024u+104u,count);if(rc!=IFS_FS_OK)return rc;
+    uint32_t index=0u;
+    for(unsigned i=0u;i<t->count;++i) {
+        AllocPatch *p=&t->patches[i];if(!p->dirty)continue;
+        uint8_t *record=header+EJ_RECORD+index*36u;
+        ej_p32(record,p->number);
+        rc=ej_hash(p->after,EJ_BS,record+4u);if(rc!=IFS_FS_OK)return rc;
+        ++index;
+    }
+    rc=ej_targets(header,total);if(rc!=IFS_FS_OK)return rc;
+    if(h->cancelled && h->cancelled(h->context))return IFS_FS_BUSY;
+    index=0u;
+    for(unsigned i=0u;i<t->count;++i) {
+        AllocPatch *p=&t->patches[i];if(!p->dirty)continue;
+        rc=jwrite(h,total+2u+index++,p->after);if(rc!=IFS_FS_OK)goto fail;
+    }
+    rc=jflush(h);if(rc!=IFS_FS_OK)goto fail;
+    rc=ej_seal(header);if(rc!=IFS_FS_OK)goto fail;
+    rc=ej_publish(h,total,header);if(rc!=IFS_FS_OK)goto fail;
+    rc=ej_checkpoint(h,total,sb,header);if(rc!=IFS_FS_OK)goto fail;
+    return IFS_FS_OK;
+fail:
+    v->mutation_fault=1;return rc;
+}
+
 /* Validate primary descriptors against the exact native formatter
  * layout, and require reserved metadata bits to remain allocated. */
 static int alloc_group(AllocTxn *t,uint32_t group,AllocPatch **gdt,
@@ -729,6 +806,7 @@ static int alloc_create(void *volume,const char *path,uint32_t type)
 {
     CommonVolume *v=session_lookup(volume);
     int rc=alloc_profile(v);if(rc!=IFS_FS_OK)return rc;
+    if(v->reloc_plan)return IFS_FS_BUSY;
     if(type!=IFS_FS_ENTRY_FILE || !path || path[0]!='/' || !path[1] ||
        strchr(path+1,'/') || !strcmp(path,"/.") || !strcmp(path,"/.."))
         return IFS_FS_UNSUPPORTED;
@@ -800,6 +878,7 @@ static int alloc_append(void *volume,const char *path,uint64_t pos,
 {
     CommonVolume *v=session_lookup(volume);
     int rc=alloc_profile(v);if(rc!=IFS_FS_OK)return rc;
+    if(v->reloc_plan)return IFS_FS_BUSY;
     if(!data || !length || length>65536u)return IFS_FS_UNSUPPORTED;
     void *work=scratch(v);if(!work)return IFS_FS_NO_MEMORY;
     IfsExt2Inode inode;
@@ -833,6 +912,7 @@ static int write_file(void *v, const char *path, uint64_t pos,
 {
     CommonVolume *mounted=session_lookup(v);
     if(valid(mounted) && mounted->mutation_fault)return IFS_FS_IO_ERROR;
+    if(valid(mounted) && mounted->reloc_plan)return IFS_FS_BUSY;
     int rc=file_io(v,path,pos,(void *)b,n,1);
     return rc==IFS_FS_UNSUPPORTED?alloc_append(v,path,pos,b,n):rc;
 }
@@ -843,11 +923,487 @@ static int guarded_write_file(void *v, const char *path, uint64_t pos,
     return v2_leave_operation(write_file(v,path,pos,b,n));
 }
 
+typedef struct {
+    uint32_t inode,blocks,target,reserve;
+    uint64_t size;
+    unsigned char digest[32];
+} RelocFile;
+typedef struct {
+    RelocFile *files;
+    uint32_t count,capacity,total;
+    uint64_t free_blocks;
+    int executed;
+} RelocPlan;
+typedef struct {uint32_t inode,parent;} RelocDirectory;
+typedef struct {
+    CommonVolume *v;
+    RelocPlan *plan;
+    uint8_t *used,*owned,*inodes;
+    void *scratch;
+    RelocDirectory *directories;
+    uint32_t queued,current,parent,children,dot,dotdot;
+    int rc;
+} RelocScan;
+static uintptr_t reloc_generation;
+static int reloc_bit(const uint8_t *map,uint32_t n)
+{return (map[n/8u]>>(n%8u))&1u;}
+static void reloc_mark(uint8_t *map,uint32_t n)
+{map[n/8u]|=(uint8_t)(1u<<(n%8u));}
+static void reloc_free(CommonVolume *v,RelocPlan *p)
+{
+    if(!p)return;
+    if(p->files)v->host.release(v->host.context,p->files);
+    v->host.release(v->host.context,p);
+}
+static void reloc_discard(CommonVolume *v)
+{
+    reloc_free(v,v->reloc_plan);
+    v->reloc_plan=NULL;v->reloc_token=0;
+}
+static int reloc_cancel(CommonVolume *v)
+{return v->host.cancelled && v->host.cancelled(v->host.context);}
+static int reloc_claim(RelocScan *s,uint32_t n)
+{
+    if(n>=s->plan->total || !reloc_bit(s->used,n) ||
+       reloc_bit(s->owned,n))return IFS_FS_CORRUPT;
+    reloc_mark(s->owned,n);return IFS_FS_OK;
+}
+/* Account for every direct, single-, double- and triple-indirect block.
+ * Every pointer outside the logical file length must be zero. This prevents
+ * moving an ambiguous or cross-linked allocation, even on a corrupt image. */
+static int reloc_tree(RelocScan *s,uint32_t n,unsigned depth,uint64_t need,
+                      EVP_MD_CTX *md,uint32_t *count)
+{
+    if(!need)return n?IFS_FS_CORRUPT:IFS_FS_OK;
+    if(!n || reloc_cancel(s->v))return n?IFS_FS_BUSY:IFS_FS_UNSUPPORTED;
+    int rc=reloc_claim(s,n);if(rc!=IFS_FS_OK)return rc;
+    ++*count;
+    uint8_t block[ALLOC_BS];
+    rc=jread(&s->v->host,n,block);if(rc!=IFS_FS_OK)return rc;
+    if(!depth) {
+        if(need!=1u)return IFS_FS_CORRUPT;
+        return !md || EVP_DigestUpdate(md,block,sizeof(block))==1?
+            IFS_FS_OK:IFS_FS_IO_ERROR;
+    }
+    uint64_t span=1u;
+    for(unsigned i=1;i<depth;++i)span*=1024u;
+    for(unsigned i=0;i<1024u;++i) {
+        const uint64_t take=need<span?need:span;
+        rc=reloc_tree(s,alloc_u32(block+4u*i),depth-1u,take,md,count);
+        if(rc!=IFS_FS_OK)return rc;
+        need-=take;
+    }
+    return need?IFS_FS_CORRUPT:IFS_FS_OK;
+}
+static int reloc_inode(RelocScan *s,const IfsExt2Inode *inode,RelocFile *file)
+{
+    if(inode->flags || inode->size>UINT32_MAX)return IFS_FS_UNSUPPORTED;
+    const uint32_t n=inode->number;
+    if(!n || n>s->v->media.fs.total_inodes ||
+       reloc_bit(s->inodes,n-1u))return IFS_FS_CORRUPT;
+    reloc_mark(s->inodes,n-1u);
+    const uint32_t group=(n-1u)/1024u,k=(n-1u)%1024u;
+    uint8_t table[ALLOC_BS];
+    int rc=jread(&s->v->host,group*32768u+4u+k/16u,table);
+    if(rc!=IFS_FS_OK)return rc;
+    const uint8_t *raw=table+(k%16u)*256u;
+    /* No external attribute block or fragment address is part of this
+     * qualified allocation profile. Preserve every other inode byte. */
+    if(alloc_u32(raw+104u) || alloc_u32(raw+112u))return IFS_FS_UNSUPPORTED;
+    uint64_t left=(inode->size+ALLOC_BS-1u)/ALLOC_BS;
+    uint32_t count=0;
+    EVP_MD_CTX *md=file?EVP_MD_CTX_new():NULL;
+    if(file && (!md || EVP_DigestInit_ex(md,EVP_sha256(),NULL)!=1)) {
+        EVP_MD_CTX_free(md);return IFS_FS_NO_MEMORY;
+    }
+    for(unsigned i=0;i<15u;++i) {
+        unsigned depth=i<12u?0u:i-11u;
+        uint64_t span=1u;
+        for(unsigned j=0;j<depth;++j)span*=1024u;
+        const uint64_t take=left<span?left:span;
+        rc=reloc_tree(s,alloc_u32(raw+40u+4u*i),depth,take,md,&count);
+        if(rc!=IFS_FS_OK)goto done;
+        left-=take;
+    }
+    if(left || count>UINT32_MAX/8u || alloc_u32(raw+28u)!=count*8u) {
+        rc=IFS_FS_CORRUPT;goto done;
+    }
+    if(file) {
+        unsigned length=0;
+        file->inode=n;file->size=inode->size;
+        file->blocks=(uint32_t)((inode->size+ALLOC_BS-1u)/ALLOC_BS);
+        if(EVP_DigestFinal_ex(md,file->digest,&length)!=1 || length!=32u)
+            rc=IFS_FS_IO_ERROR;
+    }
+done:
+    EVP_MD_CTX_free(md);return rc;
+}
+static int reloc_dirent(void *opaque,ifs_ext2_u32 number,IfsExt2NodeType type,
+                        const char *name,ifs_ext2_u8 bytes)
+{
+    RelocScan *s=opaque;
+    if(bytes==1u && name[0]=='.') {
+        if(number!=s->current || s->dot++){s->rc=IFS_FS_CORRUPT;return 1;}
+        return 0;
+    }
+    if(bytes==2u && name[0]=='.' && name[1]=='.') {
+        if(number!=s->parent || s->dotdot++){s->rc=IFS_FS_CORRUPT;return 1;}
+        return 0;
+    }
+    if(!bytes || number<11u || s->plan->count>=s->plan->capacity) {
+        s->rc=IFS_FS_CORRUPT;return 1;
+    }
+    IfsExt2Inode inode;
+    s->rc=status(ifs_ext2_read_inode(&s->v->media.fs,number,&inode,
+                                   s->scratch,ALLOC_BS));
+    if(s->rc!=IFS_FS_OK)return 1;
+    const IfsExt2NodeType actual=ifs_ext2_inode_type(&inode);
+    if((type!=IFS_EXT2_NODE_UNKNOWN && type!=actual) ||
+       (actual!=IFS_EXT2_NODE_REGULAR && actual!=IFS_EXT2_NODE_DIRECTORY) ||
+       (actual==IFS_EXT2_NODE_REGULAR && inode.links_count!=1u)) {
+        s->rc=IFS_FS_UNSUPPORTED;return 1;
+    }
+    /* Claim the full directory chain just like a file; directory bytes
+     * are hashed and moved without changing the inode or its references.
+     * The root itself remains pinned during relocation. */
+    s->rc=reloc_inode(s,&inode,&s->plan->files[s->plan->count]);
+    if(s->rc!=IFS_FS_OK)return 1;
+    ++s->plan->count;
+    if(actual==IFS_EXT2_NODE_DIRECTORY) {
+        if(s->queued>=s->plan->capacity){s->rc=IFS_FS_CORRUPT;return 1;}
+        s->directories[s->queued++]=(RelocDirectory){number,s->current};
+        ++s->children;
+    }
+    return 0;
+}
+/* Reconstruct the complete native allocation ownership, checking free
+ * counters and reserved blocks before any relocation is permitted. */
+static int reloc_snapshot(CommonVolume *v,RelocPlan **out,uint8_t **bitmap)
+{
+    *out=NULL;*bitmap=NULL;
+    int rc=alloc_geometry(v);if(rc!=IFS_FS_OK)return rc;
+    uint8_t sb[ALLOC_BS],journal[ALLOC_BS],gdt[ALLOC_BS],map[ALLOC_BS];
+    uint32_t total=0;
+    rc=ej_load(&v->host,sb,journal,&total);
+    if(rc==IFS_FS_NOT_FOUND)return IFS_FS_UNSUPPORTED;
+    if(rc!=IFS_FS_OK)return rc;
+    if(ej_u32(journal+12u))
+        return IFS_FS_CORRUPT;
+    const uint32_t cap=v->media.fs.total_inodes;
+    if(!cap || cap>128u*1024u)return IFS_FS_UNSUPPORTED;
+    const size_t nb=((size_t)total+7u)/8u,ib=((size_t)cap+7u)/8u;
+    RelocPlan *p=v->host.allocate(v->host.context,sizeof(*p));
+    if(!p)return IFS_FS_NO_MEMORY;
+    memset(p,0,sizeof(*p));p->capacity=cap;p->total=total;
+    p->files=v->host.allocate(v->host.context,(size_t)cap*sizeof(*p->files));
+    uint8_t *used=v->host.allocate(v->host.context,nb);
+    uint8_t *owned=v->host.allocate(v->host.context,nb);
+    uint8_t *inodes=v->host.allocate(v->host.context,ib);
+    RelocDirectory *dirs=v->host.allocate(v->host.context,(size_t)cap*sizeof(*dirs));
+    void *work=scratch(v),*lookup=scratch(v);
+    if(!p->files || !used || !owned || !inodes || !dirs || !work || !lookup) {
+        rc=IFS_FS_NO_MEMORY;goto done;
+    }
+    memset(used,0,nb);memset(owned,0,nb);memset(inodes,0,ib);
+    memset(p->files,0,(size_t)cap*sizeof(*p->files));
+    rc=jread(&v->host,1u,gdt);if(rc!=IFS_FS_OK)goto done;
+    const uint32_t groups=v->media.fs.group_count;
+    for(uint32_t g=0;g<groups;++g) {
+        const uint32_t base=g*32768u;
+        const uint32_t span=total-base>32768u?32768u:total-base;
+        const uint8_t *d=gdt+g*32u;
+        if(span<=68u || alloc_u32(d)!=base+2u ||
+           alloc_u32(d+4u)!=base+3u || alloc_u32(d+8u)!=base+4u) {
+            rc=IFS_FS_CORRUPT;goto done;
+        }
+        rc=jread(&v->host,base+2u,map);if(rc!=IFS_FS_OK)goto done;
+        uint32_t free_count=0;
+        for(uint32_t k=0;k<span;++k) {
+            const uint32_t n=base+k;
+            const int bit=reloc_bit(map,k);
+            if(bit)reloc_mark(used,n);else ++free_count;
+            if(k<68u) {
+                if(!bit){rc=IFS_FS_CORRUPT;goto done;}
+                reloc_mark(owned,n);
+            }
+        }
+        if(free_count!=alloc_u16(d+12u)){rc=IFS_FS_CORRUPT;goto done;}
+        p->free_blocks+=free_count;
+    }
+    if(p->free_blocks!=v->media.fs.free_blocks ||
+       p->free_blocks!=alloc_u32(sb+1024u+12u)) {
+        rc=IFS_FS_CORRUPT;goto done;
+    }
+    RelocScan scan={.v=v,.plan=p,.used=used,.owned=owned,
+                    .inodes=inodes,.scratch=lookup,.directories=dirs,
+                    .queued=1u,.rc=IFS_FS_OK};
+    IfsExt2Inode root;
+    rc=status(engine()->root(&v->media,&root,work,ALLOC_BS));
+    if(rc!=IFS_FS_OK)goto done;
+    if(root.number!=2u || ifs_ext2_inode_type(&root)!=IFS_EXT2_NODE_DIRECTORY) {
+        rc=IFS_FS_CORRUPT;goto done;
+    }
+    rc=reloc_inode(&scan,&root,NULL);if(rc!=IFS_FS_OK)goto done;
+    dirs[0]=(RelocDirectory){2u,2u};
+    /* Iterative traversal bounds memory and cannot recurse through a
+     * corrupt directory graph. Inode ownership rejects aliases/cycles. */
+    uint32_t group_dirs[128]={0};
+    for(uint32_t head=0u;head<scan.queued;++head) {
+        IfsExt2Inode dir;
+        rc=status(ifs_ext2_read_inode(&v->media.fs,dirs[head].inode,&dir,lookup,ALLOC_BS));
+        if(rc!=IFS_FS_OK)goto done;
+        scan.current=dir.number;scan.parent=dirs[head].parent;
+        scan.dot=scan.dotdot=scan.children=0u;
+        IfsExt2Status st=ifs_ext2_iterate_directory(&v->media.fs,&dir,
+                             reloc_dirent,&scan,work,ALLOC_BS);
+        if(scan.rc!=IFS_FS_OK){rc=scan.rc;goto done;}
+        if(st!=IFS_EXT2_OK){rc=status(st);goto done;}
+        if(scan.dot!=1u || scan.dotdot!=1u ||
+           dir.links_count!=scan.children+2u){rc=IFS_FS_CORRUPT;goto done;}
+        ++group_dirs[(dir.number-1u)/1024u];
+    }
+    /* Reserved inode numbers are fixed in the native format; any other
+     * allocated inode must have been seen exactly once in the directory tree. */
+    uint64_t free_inodes=0;
+    for(uint32_t g=0;g<groups;++g) {
+        rc=jread(&v->host,g*32768u+3u,map);if(rc!=IFS_FS_OK)goto done;
+        uint32_t count=0;
+        for(uint32_t k=0;k<1024u;++k) {
+            const uint32_t i=g*1024u+k;
+            const int bit=reloc_bit(map,k);
+            if(bit!=(i<10u || reloc_bit(inodes,i))) {
+                rc=IFS_FS_CORRUPT;goto done;
+            }
+            if(!bit)++count;
+        }
+        if(count!=alloc_u16(gdt+g*32u+14u) ||
+           group_dirs[g]!=alloc_u16(gdt+g*32u+16u)){
+            rc=IFS_FS_CORRUPT;goto done;
+        }
+        free_inodes+=count;
+    }
+    if(free_inodes!=alloc_u32(sb+1024u+16u) || memcmp(used,owned,nb)) {
+        rc=IFS_FS_CORRUPT;goto done;
+    }
+    *out=p;*bitmap=used;p=NULL;used=NULL;rc=IFS_FS_OK;
+done:
+    unscratch(v,work);unscratch(v,lookup);
+    if(used)v->host.release(v->host.context,used);
+    if(owned)v->host.release(v->host.context,owned);
+    if(inodes)v->host.release(v->host.context,inodes);
+    if(dirs)v->host.release(v->host.context,dirs);
+    reloc_free(v,p);return rc;
+}
+static int reloc_plan(void *volume,const char *path,uint32_t policy,void **out)
+{
+    if(!out)return IFS_FS_INVALID;
+    *out=NULL;
+    CommonVolume *v=session_lookup(volume);
+    if(!valid(v) || !path)return IFS_FS_INVALID;
+    if(strcmp(path,"/") || (policy!=0u && policy!=10u))return IFS_FS_UNSUPPORTED;
+    if(v->reloc_plan || reloc_generation==UINTPTR_MAX)return IFS_FS_BUSY;
+    RelocPlan *p=NULL;uint8_t *used=NULL;
+    int rc=reloc_snapshot(v,&p,&used);if(rc!=IFS_FS_OK)return rc;
+    uint32_t cursor=0;
+    for(uint32_t i=0;i<p->count;++i) {
+        RelocFile *f=&p->files[i];
+        if(!f->blocks)continue;
+        f->reserve=policy?(f->blocks+9u)/10u:0u;
+        const uint32_t need=f->blocks+f->reserve;
+        uint32_t run=0;
+        for(;cursor<p->total;++cursor) {
+            if(reloc_cancel(v)){rc=IFS_FS_BUSY;goto done;}
+            run=reloc_bit(used,cursor)?0u:run+1u;
+            if(run==need)break;
+        }
+        if(cursor==p->total){rc=IFS_FS_NO_SPACE;goto done;}
+        f->target=cursor+1u-need;
+        for(uint32_t n=f->target;n<=cursor;++n)reloc_mark(used,n);
+        ++cursor;
+    }
+    v->reloc_plan=p;v->reloc_token=++reloc_generation;
+    *out=(void*)v->reloc_token;p=NULL;rc=IFS_FS_OK;
+done:
+    v->host.release(v->host.context,used);reloc_free(v,p);return rc;
+}
+static int reloc_set_allocated(AllocTxn *t,uint32_t n,int allocate)
+{
+    if(n>=t->v->media.fs.total_blocks || n%32768u<68u)return IFS_FS_CORRUPT;
+    AllocPatch *gd,*map;uint8_t *d;uint32_t span;
+    int rc=alloc_group(t,n/32768u,&gd,&d,&span);
+    if(rc!=IFS_FS_OK)return rc;
+    rc=alloc_patch(t,alloc_u32(d),&map);if(rc!=IFS_FS_OK)return rc;
+    const uint32_t k=n%32768u;
+    if(k>=span || reloc_bit(map->after,k)==allocate)return IFS_FS_CORRUPT;
+    uint32_t free_count=alloc_u16(d+12u);
+    const uint8_t mask=(uint8_t)(1u<<(k%8u));
+    if(allocate) {
+        if(!free_count)return IFS_FS_CORRUPT;
+        map->after[k/8u]|=mask;--free_count;
+    } else {
+        if(free_count>=span-68u)return IFS_FS_CORRUPT;
+        map->after[k/8u]&=(uint8_t)~mask;++free_count;
+    }
+    alloc_p16(d+12u,free_count);gd->dirty=1;map->dirty=1;
+    return IFS_FS_OK;
+}
+static int reloc_one(AllocTxn *t,AllocPatch *ip,uint8_t *raw,
+                     uint32_t logical,uint32_t dest)
+{
+    IfsExt2BlockPath path;
+    if(ifs_ext2_block_to_path(ALLOC_BS,logical,&path)!=IFS_EXT2_OK ||
+       !path.depth || path.depth>4u)return IFS_FS_CORRUPT;
+    AllocPatch *owner=ip;
+    uint8_t *ptr=raw+40u+4u*path.offsets[0];
+    for(unsigned level=0;level<path.depth;++level) {
+        const uint32_t n=alloc_u32(ptr);
+        if(!n || n==dest)return IFS_FS_CORRUPT;
+        AllocPatch *src;
+        int rc=alloc_checked(t,n,&src);if(rc!=IFS_FS_OK)return rc;
+        if(level+1u==path.depth) {
+            AllocPatch *dst;
+            rc=reloc_set_allocated(t,dest,1);if(rc!=IFS_FS_OK)return rc;
+            rc=alloc_patch(t,dest,&dst);if(rc!=IFS_FS_OK)return rc;
+            memcpy(dst->after,src->after,ALLOC_BS);dst->dirty=1;
+            alloc_p32(ptr,dest);owner->dirty=1;
+            return reloc_set_allocated(t,n,0);
+        }
+        owner=src;ptr=src->after+4u*path.offsets[level+1u];
+    }
+    return IFS_FS_CORRUPT;
+}
+static int reloc_execute(void *volume,void *token,uint64_t *moved)
+{
+    if(!moved)return IFS_FS_INVALID;
+    *moved=0;
+    CommonVolume *v=session_lookup(volume);
+    int rc=alloc_profile(v);if(rc!=IFS_FS_OK)return rc;
+    if(!token || (uintptr_t)token!=v->reloc_token || !v->reloc_plan)
+        return IFS_FS_INVALID;
+    RelocPlan *p=v->reloc_plan;
+    if(p->executed)return IFS_FS_BUSY;
+    /* A plan belongs to this exclusive mount only. CREATE/WRITE are
+     * blocked while it exists; no allocator can consume reserved targets. */
+    p->executed=-1;
+    for(uint32_t i=0;i<p->count;++i) {
+        RelocFile *f=&p->files[i];
+        for(uint32_t start=0;start<f->blocks;) {
+            const uint32_t count=f->blocks-start>24u?24u:f->blocks-start;
+            AllocTxn t={.v=v,.hint=v->allocation_hint};
+            AllocPatch *ip;uint8_t *raw;
+            rc=alloc_inode(&t,f->inode,&ip,&raw);
+            if(rc==IFS_FS_OK) {
+                for(uint32_t j=0;j<count;++j) {
+                    rc=reloc_one(&t,ip,raw,start+j,f->target+start+j);
+                    if(rc!=IFS_FS_OK)break;
+                }
+            }
+            /* Net allocation is zero. The UUID-bound native redo area
+             * checkpoints destination, pointer and both bitmaps. */
+            if(rc==IFS_FS_OK)rc=ej_commit(&t);
+            alloc_release(&t);
+            if(rc!=IFS_FS_OK)return rc;
+            start+=count;
+            const uint64_t bytes=(uint64_t)count*ALLOC_BS;
+            const uint64_t remaining=f->size-(uint64_t)(start-count)*ALLOC_BS;
+            *moved+=remaining<bytes?remaining:bytes;
+        }
+    }
+    p->executed=1;return IFS_FS_OK;
+}
+static int reloc_verify(void *volume,void *token)
+{
+    CommonVolume *v=session_lookup(volume);
+    if(!valid(v) || !token || (uintptr_t)token!=v->reloc_token ||
+       !v->reloc_plan)return IFS_FS_INVALID;
+    RelocPlan *p=v->reloc_plan;
+    if(p->executed!=1)return IFS_FS_INVALID;
+    RelocPlan *now=NULL;uint8_t *used=NULL;
+    int rc=reloc_snapshot(v,&now,&used);if(rc!=IFS_FS_OK)return rc;
+    void *work=scratch(v);
+    if(!work){rc=IFS_FS_NO_MEMORY;goto done;}
+    if(now->count!=p->count || now->free_blocks!=p->free_blocks) {
+        rc=IFS_FS_CORRUPT;goto done;
+    }
+    for(uint32_t i=0;i<p->count;++i) {
+        const RelocFile *f=&p->files[i],*g=&now->files[i];
+        if(f->inode!=g->inode || f->size!=g->size ||
+           memcmp(f->digest,g->digest,32u)) {
+            rc=IFS_FS_CORRUPT;goto done;
+        }
+        IfsExt2Inode inode;
+        rc=status(ifs_ext2_read_inode(&v->media.fs,f->inode,&inode,work,ALLOC_BS));
+        if(rc!=IFS_FS_OK)goto done;
+        for(uint32_t j=0;j<f->blocks;++j) {
+            ifs_ext2_u64 physical=0;int hole=0;
+            rc=status(ifs_ext2_map_file_block(&v->media.fs,&inode,j,
+                                              &physical,&hole,work,ALLOC_BS));
+            if(rc!=IFS_FS_OK)goto done;
+            if(hole || physical!=f->target+j){rc=IFS_FS_CORRUPT;goto done;}
+        }
+        for(uint32_t j=0;j<f->reserve;++j)
+            if(reloc_bit(used,f->target+f->blocks+j)) {
+                rc=IFS_FS_CORRUPT;goto done;
+            }
+    }
+    rc=IFS_FS_OK;
+done:
+    unscratch(v,work);v->host.release(v->host.context,used);
+    reloc_free(v,now);return rc;
+}
+/* Mount owns replay before the reader observes metadata. The explicit
+ * V2 recovery operation reports the actual transaction completed under
+ * this lease, once, and confirms that no dirty journal remains. A failed
+ * in-session mutation requires a fresh exclusive mount to discard stale
+ * caches before replay; never recover under a live relocation plan. */
+static int guarded_reloc_recover(void *volume,uint32_t flags,uint64_t *repaired)
+{
+    if(repaired)*repaired=0u;
+    if(!v2_enter_operation())return IFS_FS_BUSY;
+    CommonVolume *v=session_lookup(volume);
+    int rc=IFS_FS_INVALID;
+    if(!repaired || flags || !valid(v))goto done;
+    if(v->host.capabilities&IFS_FS_HOST_READ_ONLY){rc=IFS_FS_ACCESS;goto done;}
+    if(v->reloc_plan || v->mutation_fault){rc=IFS_FS_BUSY;goto done;}
+    uint8_t sb[ALLOC_BS],journal[ALLOC_BS];uint32_t total=0;
+    rc=ej_load(&v->host,sb,journal,&total);
+    if(rc==IFS_FS_NOT_FOUND)rc=IFS_FS_UNSUPPORTED;
+    if(rc!=IFS_FS_OK)goto done;
+    if(ej_u32(journal+12u)){
+        rc=IFS_FS_CORRUPT;goto done;
+    }
+    *repaired=v->mount_recovered;v->mount_recovered=0u;
+done:
+    return v2_leave_operation(rc);
+}
+static int guarded_reloc_plan(void *v,const char *path,uint32_t policy,void **out)
+{
+    if(out)*out=NULL;
+    if(!v2_enter_operation())return IFS_FS_BUSY;
+    return v2_leave_operation(reloc_plan(v,path,policy,out));
+}
+static int guarded_reloc_execute(void *v,void *plan,uint64_t *moved)
+{
+    if(moved)*moved=0;
+    if(!v2_enter_operation())return IFS_FS_BUSY;
+    return v2_leave_operation(reloc_execute(v,plan,moved));
+}
+static int guarded_reloc_verify(void *v,void *plan)
+{
+    if(!v2_enter_operation())return IFS_FS_BUSY;
+    return v2_leave_operation(reloc_verify(v,plan));
+}
+static void guarded_reloc_release(void *volume,void *plan)
+{
+    if(!v2_enter_operation())return;
+    CommonVolume *v=session_lookup(volume);
+    if(valid(v) && plan && (uintptr_t)plan==v->reloc_token)reloc_discard(v);
+    (void)v2_leave_operation(IFS_FS_OK);
+}
+
 #endif
 
-/* Expose the canonical EXT2 block map through Common V2. This is an
- * actual verified extent enumerator, not a relocation capability. No planner
- * or execute callback is advertised until their transaction engine exists. */
+/* Expose verified physical allocation runs through Common V2. */
 /* Publish maximal physically contiguous extents, not individual blocks.
  * Pagination is by extent number. Scan through EOF even if the page is
  * already full: a later corrupt block must never qualify a prefix. */
@@ -928,8 +1484,17 @@ static int guarded_extent_map(void *volume, const char *path, uint64_t first_ext
 
 static const IfsFsDefragOpsV2 defrag_group = {
     .header = { IFS_FS_GROUP_ABI_V2, sizeof(IfsFsDefragOpsV2),
-        IFS_FS_GROUP_DEFRAG, 0u, IFS_FS_DEFRAG_MAP },
+        IFS_FS_GROUP_DEFRAG, 0u, IFS_FS_DEFRAG_MAP
+#if !defined(IFS_EXT2_FIRMWARE_BUILD)
+        | IFS_FS_DEFRAG_PLAN | IFS_FS_DEFRAG_EXECUTE | IFS_FS_DEFRAG_VERIFY | IFS_FS_DEFRAG_RECOVER
+#endif
+    },
     .map = guarded_extent_map
+#if !defined(IFS_EXT2_FIRMWARE_BUILD)
+    , .plan=guarded_reloc_plan,.execute=guarded_reloc_execute,
+    .verify=guarded_reloc_verify,.recover=guarded_reloc_recover,
+    .release_plan=guarded_reloc_release
+#endif
 };
 
 /* Volume accounting includes committed native allocation growth.
@@ -998,12 +1563,13 @@ static int format_ext2(const IfsFsHostRuntimeV2 *h,uint32_t variant,
     for(size_t i=0;i<IFS_EXT_V2_MAX_SESSIONS;++i)
         if(sessions[i].token)return IFS_FS_BUSY;
     if((variant!=0u && variant!=2u) || flags || h->logical_sector_bytes>FMT_BLOCK ||
+       h->physical_sector_bytes>FMT_BLOCK ||
        h->volume_bytes%FMT_BLOCK)return IFS_FS_UNSUPPORTED;
     const uint64_t count=h->volume_bytes/FMT_BLOCK;
     /* A one-block group descriptor table holds up to 128 entries.
      * Refuse a short final group instead of rounding off its capacity. */
     if(count<4096u || count>128ull*FMT_BPG)return IFS_FS_UNSUPPORTED;
-    const uint32_t blocks=(uint32_t)count;
+    const uint32_t blocks=(uint32_t)count-EJ_BLOCKS;
     const uint32_t groups=(blocks+FMT_BPG-1u)/FMT_BPG;
     const uint32_t tail=blocks-(groups-1u)*FMT_BPG;
     if(tail<=FMT_META+1u)return IFS_FS_UNSUPPORTED;
@@ -1104,6 +1670,8 @@ static int format_ext2(const IfsFsHostRuntimeV2 *h,uint32_t variant,
     }
     if(h->flush(h->context)!=0)return IFS_FS_IO_ERROR;
     fmt16(sb+90,0u);
+    /* Publish clean recovery headers before making the new filesystem visible. */
+    rc=ej_clear(h,blocks,uuid);if(rc!=IFS_FS_OK)return rc;
     rc=fmt_write(h,1024u,sb,sizeof(sb));
     if(rc!=IFS_FS_OK)return rc;
     if(h->flush(h->context)!=0) {
