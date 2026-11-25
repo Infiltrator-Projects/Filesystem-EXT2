@@ -107,8 +107,33 @@ int main(int argc,char **argv)
     CHECK(vol->format(&h,2u,"EXT2TEST",0u)==IFS_FS_BUSY);
     CHECK(core->unmount(session)==IFS_FS_OK);
     CHECK(core->mount(&h,&session,&info)==IFS_FS_OK && session);
+    CHECK(core->create && core->write);
+    CHECK(core->create(session,"/A.BIN",IFS_FS_ENTRY_FILE)==IFS_FS_OK);
+    CHECK(core->create(session,"/B.BIN",IFS_FS_ENTRY_FILE)==IFS_FS_OK);
+    CHECK(core->create(session,"/A.BIN",IFS_FS_ENTRY_FILE)==IFS_FS_EXISTS);
+    uint8_t a[65536],bb[65536],copy[65536];
+    memset(a,0x35,sizeof(a));memset(bb,0x78,sizeof(bb));
+    /* 65 appends per file traverse both single and double indirection.
+     * The other file's allocation separates successive appends. */
+    for(unsigned i=0;i<65u;++i) {
+        CHECK(core->write(session,"/A.BIN",(uint64_t)i*sizeof(a),a,sizeof(a))==IFS_FS_OK);
+        CHECK(core->write(session,"/B.BIN",(uint64_t)i*sizeof(bb),bb,sizeof(bb))==IFS_FS_OK);
+    }
     CHECK(core->unmount(session)==IFS_FS_OK);
-    puts("EXT2 Common V2 native format, probe, root and mount PASS");
+    CHECK(core->mount(&ro,&session,&info)==IFS_FS_OK);
+    CHECK(core->stat(session,"/A.BIN",&entry)==IFS_FS_OK && entry.size_bytes==65u*sizeof(a));
+    for(unsigned i=0;i<65u;++i) {
+        CHECK(core->read(session,"/A.BIN",(uint64_t)i*sizeof(a),copy,sizeof(copy))==IFS_FS_OK);
+        CHECK(!memcmp(copy,a,sizeof(a)));
+        CHECK(core->read(session,"/B.BIN",(uint64_t)i*sizeof(bb),copy,sizeof(copy))==IFS_FS_OK);
+        CHECK(!memcmp(copy,bb,sizeof(bb)));
+    }
+    const IfsFsDefragOpsV2 *map=(const void*)ifs_fs_group_v2(api,IFS_FS_GROUP_DEFRAG);
+    IfsFsExtentV2 ext[16];uint32_t written=0;
+    CHECK(map && map->map(session,"/A.BIN",0,ext,16,&written)==IFS_FS_OK && written>=2u);
+    CHECK(ext[1].physical_offset!=ext[0].physical_offset+ext[0].length);
+    CHECK(core->unmount(session)==IFS_FS_OK);
+    puts("EXT2 Common V2 format, create, interleaved append, persistent read and native extent map PASS");
     result=0;
 done:
     close(m.fd);

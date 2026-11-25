@@ -371,7 +371,7 @@ int main(void)
             return fail("Native V2 EXT2 extent map hid bitmap read failure");
         forced_read_failure = UINT64_MAX;
         if (core->write(mounted, "/hello", 0u, "X", 1u) != IFS_FS_ACCESS ||
-            core->create != NULL || core->truncate != NULL ||
+            core->create == NULL || core->truncate != NULL ||
             disk.writes != 0u)
             return fail("Native V2 mount violated read-only policy");
         void *expired = mounted;
