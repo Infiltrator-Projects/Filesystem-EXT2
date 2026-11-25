@@ -229,6 +229,20 @@ int main(int argc,char **argv)
     CHECK(map->recover(session,0u,&recovered)==IFS_FS_OK && !recovered);
     CHECK(core->unmount(session)==IFS_FS_OK);
     CHECK(core->mount(&ro,&session,&info)==IFS_FS_OK);
+    /* Independently validate the whole-volume allocation cursor after growth. */
+    const IfsFsAllocationOpsV2 *allocation=(const void*)ifs_fs_group_v2(api,IFS_FS_GROUP_ALLOCATION);
+    CHECK(allocation && allocation->map);
+    uint64_t cursor=0u,unknown=0u,free_bytes=0u;
+    for(unsigned page=0u;;++page){
+        IfsFsAllocationRangeV2 ranges[64];uint32_t count=0u;uint64_t next=0u;
+        CHECK(page<65536u);
+        int status=allocation->map(session,cursor,ranges,64u,&count);
+        CHECK(ifs_fs_allocation_page_v2_valid(h.volume_bytes,cursor,status,ranges,64u,count,&next,&unknown));
+        for(uint32_t k=0u;k<count;++k)if(ranges[k].state==IFS_FS_SPACE_FREE)free_bytes+=ranges[k].length;
+        cursor=next;
+        if(status==IFS_FS_END)break;
+    }
+    CHECK(cursor==h.volume_bytes && !unknown && free_bytes==info.free_bytes);
     CHECK(map->map(session,"/A.BIN",0u,ext,2u,&written)==IFS_FS_OK &&
           written==1u && ext[0].length==65u*sizeof(a));
     for(unsigned i=0u;i<65u;++i) {

@@ -1200,6 +1200,55 @@ done:
     if(dirs)v->host.release(v->host.context,dirs);
     reloc_free(v,p);return rc;
 }
+/* Native ownership snapshot: never infer free space from file extents. */
+static int allocation_map(void *session,uint64_t first,IfsFsAllocationRangeV2 *ranges,
+                          uint32_t capacity,uint32_t *written)
+{
+    if(!written)return IFS_FS_INVALID;
+    *written=0u;
+    CommonVolume *v=session_lookup(session);
+    if(!valid(v)||!ranges||!capacity||first>v->host.volume_bytes)
+        return IFS_FS_INVALID;
+    RelocPlan *p=NULL;uint8_t *used=NULL;
+    int rc=reloc_snapshot(v,&p,&used);
+    if(rc!=IFS_FS_OK)return rc;
+    uint64_t end=(uint64_t)p->total*ALLOC_BS,limit=v->host.volume_bytes,at=first;
+    if(end>limit){rc=IFS_FS_CORRUPT;goto done;}
+    if(at==limit){rc=IFS_FS_END;goto done;}
+    while(at<limit && *written<capacity) {
+        if(reloc_cancel(v)){rc=IFS_FS_BUSY;goto done;}
+        uint64_t next;uint32_t state;
+        if(at>=end){next=limit;state=IFS_FS_SPACE_RESERVED;}
+        else {
+            uint32_t block=(uint32_t)(at/ALLOC_BS);
+            int allocated=reloc_bit(used,block);
+            state=allocated?IFS_FS_SPACE_ALLOCATED:IFS_FS_SPACE_FREE;
+            ++block;
+            while(block<p->total && reloc_bit(used,block)==allocated)++block;
+            next=(uint64_t)block*ALLOC_BS;
+        }
+        ranges[(*written)++]=(IfsFsAllocationRangeV2){at,next-at,state,0u};
+        at=next;
+    }
+    rc=IFS_FS_OK;
+done:
+    if(rc!=IFS_FS_OK)*written=0u;
+    v->host.release(v->host.context,used);reloc_free(v,p);
+    return rc;
+}
+static int guarded_allocation_map(void *v,uint64_t first,IfsFsAllocationRangeV2 *ranges,
+                                  uint32_t capacity,uint32_t *written)
+{
+    if(written)*written=0u;
+    if(!v2_enter_operation())return IFS_FS_BUSY;
+    return v2_leave_operation(allocation_map(v,first,ranges,capacity,written));
+}
+static const IfsFsAllocationOpsV2 allocation_group={
+    .header={IFS_FS_GROUP_ABI_V2,sizeof(IfsFsAllocationOpsV2),
+             IFS_FS_GROUP_ALLOCATION,0u,IFS_FS_ALLOCATION_ALL},
+    .map=guarded_allocation_map
+};
+
 static int reloc_plan(void *volume,const char *path,uint32_t policy,void **out)
 {
     if(!out)return IFS_FS_INVALID;
@@ -1794,6 +1843,9 @@ static const IfsFsGroupHeaderV2 *query_group(uint32_t group,
     if (group == IFS_FS_GROUP_CORE) return &core_group.header;
     if (group == IFS_FS_GROUP_VOLUME) return &volume_group.header;
     if (group == IFS_FS_GROUP_DEFRAG) return &defrag_group.header;
+#if !defined(IFS_EXT2_FIRMWARE_BUILD)
+    if (group == IFS_FS_GROUP_ALLOCATION) return &allocation_group.header;
+#endif
     if (group == IFS_FS_GROUP_METADATA) return &metadata_group.header;
     return NULL;
 }
@@ -1809,6 +1861,9 @@ static const IfsFsModuleApiV2 common_v2 = {
     .group_mask = IFS_FS_GROUP_BIT(IFS_FS_GROUP_CORE) |
                   IFS_FS_GROUP_BIT(IFS_FS_GROUP_VOLUME) |
                   IFS_FS_GROUP_BIT(IFS_FS_GROUP_DEFRAG) |
+#if !defined(IFS_EXT2_FIRMWARE_BUILD)
+                  IFS_FS_GROUP_BIT(IFS_FS_GROUP_ALLOCATION) |
+#endif
                   IFS_FS_GROUP_BIT(IFS_FS_GROUP_METADATA),
     .query_group = query_group
 };
