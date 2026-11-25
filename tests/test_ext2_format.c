@@ -124,6 +124,13 @@ int main(int argc,char **argv)
         CHECK(core->write(session,"/A.BIN",(uint64_t)i*sizeof(a),a,sizeof(a))==IFS_FS_OK);
         CHECK(core->write(session,"/B.BIN",(uint64_t)i*sizeof(bb),bb,sizeof(bb))==IFS_FS_OK);
     }
+    /* Exercise empty files and each boundary-sized native allocation. */
+    const uint32_t sizes[]={0u,1u,511u,512u,513u,4095u,4096u,4097u};
+    for(unsigned i=0u;i<sizeof(sizes)/sizeof(sizes[0]);++i) {
+        char path[32];(void)snprintf(path,sizeof(path),"/EDGE%u.BIN",i);
+        CHECK(core->create(session,path,IFS_FS_ENTRY_FILE)==IFS_FS_OK);
+        if(sizes[i])CHECK(core->write(session,path,0u,a,sizes[i])==IFS_FS_OK);
+    }
     CHECK(core->unmount(session)==IFS_FS_OK);
     CHECK(core->mount(&ro,&session,&info)==IFS_FS_OK);
     CHECK(core->stat(session,"/A.BIN",&entry)==IFS_FS_OK && entry.size_bytes==65u*sizeof(a));
@@ -141,6 +148,23 @@ int main(int argc,char **argv)
     CHECK(map && map->map(session,"/A.BIN",15u,ext,2,&written)==IFS_FS_OK && written==2u);
     CHECK(ext[0].logical_offset==15u*4096u && ext[1].logical_offset==16u*4096u);
     CHECK(ext[1].physical_offset!=ext[0].physical_offset+ext[0].length);
+    for(unsigned i=0u;i<sizeof(sizes)/sizeof(sizes[0]);++i) {
+        char path[32];(void)snprintf(path,sizeof(path),"/EDGE%u.BIN",i);
+        uint64_t offset=0u;
+        for(uint64_t page=0u;;++page) {
+            int rc=map->map(session,path,page,ext,1u,&written);
+            if(rc==IFS_FS_END){CHECK(!written && offset==sizes[i]);break;}
+            CHECK(rc==IFS_FS_OK && written==1u && ext[0].logical_offset==offset);
+            CHECK(ext[0].length && ext[0].length<=sizes[i]-offset);
+            offset+=ext[0].length;
+        }
+        if(sizes[i]){
+            CHECK(core->read(session,path,0u,copy,sizes[i])==IFS_FS_OK);
+            CHECK(!memcmp(copy,a,sizes[i]));
+        }
+    }
+    CHECK(map->map(session,"/",0u,ext,2u,&written)==IFS_FS_OK && written>0u &&
+          ext[0].logical_offset==0u && ext[0].length==4096u);
     CHECK(core->unmount(session)==IFS_FS_OK);
     puts("EXT2 Common V2 format, create, interleaved append, persistent read and native extent map PASS");
     result=0;

@@ -866,7 +866,8 @@ static int extent_map(void *volume, const char *path, uint64_t first_extent,
     if (!work) return IFS_FS_NO_MEMORY;
     rc = resolve(v, path, &inode, NULL, NULL, work);
     if (rc) goto done;
-    if (ifs_ext2_inode_type(&inode) != IFS_EXT2_NODE_REGULAR) {
+    const IfsExt2NodeType type=ifs_ext2_inode_type(&inode);
+    if (type != IFS_EXT2_NODE_REGULAR && type != IFS_EXT2_NODE_DIRECTORY) {
         rc = IFS_FS_UNSUPPORTED;
         goto done;
     }
@@ -892,7 +893,10 @@ static int extent_map(void *volume, const char *path, uint64_t first_extent,
             rc = status(native_status);
             goto done;
         }
-        if (hole) continue;
+        if (hole) {
+            if(type==IFS_EXT2_NODE_DIRECTORY){rc=IFS_FS_CORRUPT;goto done;}
+            continue;
+        }
         native_status = ifs_ext2_validate_allocated_data_block(
             &v->media.fs, physical, work, v->media.fs.block_size);
         if (native_status != IFS_EXT2_OK) {
@@ -900,9 +904,20 @@ static int extent_map(void *volume, const char *path, uint64_t first_extent,
             goto done;
         }
         if (index++ < first_extent) continue;
-        extents[count].logical_offset = logical * v->media.fs.block_size;
-        extents[count].physical_offset = physical * v->media.fs.block_size;
-        extents[count].length = v->media.fs.block_size;
+        /* Return logical bytes, not allocation padding after EOF.
+         * A one-byte file has a one-byte mapped extent, while the
+         * provider's allocation accounting still owns the entire block. */
+        const uint64_t unit=v->media.fs.block_size;
+        const uint64_t off=logical*unit;
+        const uint64_t length=inode.size-off<unit?inode.size-off:unit;
+        if(physical>UINT64_MAX/unit){rc=IFS_FS_CORRUPT;goto done;}
+        const uint64_t at=physical*unit;
+        if(at>v->host.volume_bytes || length>v->host.volume_bytes-at){
+            rc=IFS_FS_CORRUPT;goto done;
+        }
+        extents[count].logical_offset = off;
+        extents[count].physical_offset = at;
+        extents[count].length = length;
         extents[count].flags = 0u;
         extents[count].reserved = 0u;
         if (++count == capacity) break;
