@@ -929,8 +929,8 @@ static const IfsFsDefragOpsV2 defrag_group = {
     .map = guarded_extent_map
 };
 
-/* Advertise no create/remove/resize/repair until the canonical
- * EXT2 implementation actually supplies independently tested operations. */
+/* Volume accounting includes committed native allocation growth.
+ * Remove, truncate and repair remain unadvertised. */
 static int volume_query(void *mounted, IfsFsVolumeInfoV2 *out)
 {
     CommonVolume *v = session_lookup(mounted);
@@ -1156,9 +1156,8 @@ static const IfsFsVolumeOpsV2 volume_group = {
     , .format = guarded_format_ext2
 #endif
 };
-/* V2 CORE directly owns the implemented production read/write and namespace
- * operations. Missing allocate/create/repair callbacks are deliberate
- * capability denials rather than successful placeholders. */
+/* Hosted CORE supports bounded file creation and append allocation;
+ * the firmware descriptor retains its read-only contract. */
 static const IfsFsCoreOpsV2 core_group = {
     .header = {IFS_FS_GROUP_ABI_V2, sizeof(IfsFsCoreOpsV2),
         IFS_FS_GROUP_CORE, 0u,

@@ -111,6 +111,11 @@ int main(int argc,char **argv)
     CHECK(core->create(session,"/A.BIN",IFS_FS_ENTRY_FILE)==IFS_FS_OK);
     CHECK(core->create(session,"/B.BIN",IFS_FS_ENTRY_FILE)==IFS_FS_OK);
     CHECK(core->create(session,"/A.BIN",IFS_FS_ENTRY_FILE)==IFS_FS_EXISTS);
+    /* A one-shot flush error must roll back the directory and inode map. */
+    m.fail_flush=m.flushes+1u;
+    CHECK(core->create(session,"/ROLLBACK.BIN",IFS_FS_ENTRY_FILE)==IFS_FS_IO_ERROR);
+    m.fail_flush=0u;
+    CHECK(core->stat(session,"/ROLLBACK.BIN",&entry)==IFS_FS_NOT_FOUND);
     uint8_t a[65536],bb[65536],copy[65536];
     memset(a,0x35,sizeof(a));memset(bb,0x78,sizeof(bb));
     /* 65 appends per file traverse both single and double indirection.
@@ -129,8 +134,12 @@ int main(int argc,char **argv)
         CHECK(!memcmp(copy,bb,sizeof(bb)));
     }
     const IfsFsDefragOpsV2 *map=(const void*)ifs_fs_group_v2(api,IFS_FS_GROUP_DEFRAG);
-    IfsFsExtentV2 ext[16];uint32_t written=0;
-    CHECK(map && map->map(session,"/A.BIN",0,ext,16,&written)==IFS_FS_OK && written>=2u);
+    /* Compare the last block of the first 64 KiB append with the
+     * first block of the second. B's intervening allocation proves the
+     * gap is caused by the actual interleaved file writes. */
+    IfsFsExtentV2 ext[2];uint32_t written=0;
+    CHECK(map && map->map(session,"/A.BIN",15u,ext,2,&written)==IFS_FS_OK && written==2u);
+    CHECK(ext[0].logical_offset==15u*4096u && ext[1].logical_offset==16u*4096u);
     CHECK(ext[1].physical_offset!=ext[0].physical_offset+ext[0].length);
     CHECK(core->unmount(session)==IFS_FS_OK);
     puts("EXT2 Common V2 format, create, interleaved append, persistent read and native extent map PASS");
