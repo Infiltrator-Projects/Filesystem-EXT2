@@ -359,7 +359,7 @@ int main(void)
                         &mapped_count) != IFS_FS_OK ||
             mapped_count != 1u || mapped[0].logical_offset != 0u ||
             mapped[0].physical_offset != BLOCK_SIZE * 7u ||
-            mapped[0].length != BLOCK_SIZE ||
+            mapped[0].length != 5u || /* Exact logical EOF, not block padding. */
             defrag->map(mounted, "/hello", 1u, mapped, 2u,
                         &mapped_count) != IFS_FS_END ||
             mapped_count != 0u)
