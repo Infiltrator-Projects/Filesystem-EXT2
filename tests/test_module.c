@@ -17,7 +17,7 @@ int main(void)
         (const IfsFsCoreOpsV2 *)ifs_fs_group_v2(m, IFS_FS_GROUP_CORE);
     if (!core || !core->probe || !core->mount || !core->unmount ||
         !core->stat || !core->directory_entry || !core->read ||
-        !core->write || core->create || core->truncate || core->remove)
+        !core->write || !core->create || core->truncate || core->remove)
         return 1;
     const IfsFsDefragOpsV2 *defrag =
         (const IfsFsDefragOpsV2 *)ifs_fs_group_v2(m, IFS_FS_GROUP_DEFRAG);
