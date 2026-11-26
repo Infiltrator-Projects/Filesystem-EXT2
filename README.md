@@ -29,8 +29,10 @@ The target installation is `/System/Filesystems/EXT2.so` and `/System/Resources/
 - [Provider implementation](module/ext2_common.c)
 - [Native design](native/filesystems/ext2/DESIGN.md)
 - [Migration and source history](MIGRATION_STATUS.md)
-- [Original-format reference source](docs/EXT2.pages) and [PDF](docs/EXT2.pdf)
+- [Original-format reference source](docs/EXT2.pdfstreams) and [PDF](docs/EXT2.pdf)
 - [Project philosophy](docs/PHILOSOPHY.md)
 - [Common ABI](https://github.com/Infiltrator-Projects/Libraries)
 
 The original-format reference and historical migration notes describe different evidence from the current production provider. When descriptions disagree, the current exported descriptor, implementation, executable tests and exact-revision release evidence take precedence.
+
+The [engineering reference](docs/EXT2-TECHNICAL-REFERENCE.md) adds field-level original-format guidance. The earlier manual is retained as a historical appendix in the PDF.
