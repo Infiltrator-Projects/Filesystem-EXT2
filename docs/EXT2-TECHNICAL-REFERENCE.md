@@ -2,9 +2,9 @@
 
 ## Original format and scope
 
-Second Extended Filesystem was developed for Linux by Remy Card, Theodore Ts'o and Stephen Tweedie and appeared in 1993. Its block groups combine local allocation bitmaps and inode tables with shared superblock geometry. This reference uses the historical Linux v2.6.32 ext2 definitions rather than silently adopting contemporary ext4 fields. Ext2 has no native transaction journal. A filesystem carrying a journal or pending recovery must be classified by actual features, not by the label supplied to the probe. Ordinary allocation, file mapping and directory semantics are related to ext3 but their interruption guarantees differ.
+Linux initially used MINIX and the first extended filesystem. Second Extended Filesystem (ext2), developed by Remy Card, Theodore Ts'o and Stephen Tweedie, appeared in January 1993. Its block groups combine local allocation bitmaps and inode tables with shared superblock geometry, improving allocation locality and Unix-style metadata. This reference uses Linux v2.6.32 ext2 definitions rather than contemporary ext4 fields.
 
-Linux initially used MINIX and the first extended filesystem. Ext2's January 1993 release and block-group locality improved allocation and Unix-style metadata at the cost of full consistency scans after unclean shutdown. Low write amplification is not crash resilience.
+Ext2 has no native transaction journal: low write amplification is not crash resilience, and unclean shutdown may require a full consistency scan. A volume carrying a journal or pending recovery must be classified by its actual feature flags, not its supplied label. Ext3 shares ordinary allocation, mapping and directory semantics but adds different interruption guarantees.
 
 ## Superblock geometry and field inventory
 
@@ -44,11 +44,11 @@ Reconstruct all metadata reservations, allocated inode identities, direct and in
 
 ## Non-journalled update ordering
 
-Ext2 has no native commit log. A conservative allocation sequence reserves blocks before making live pointers refer to them, initializes content and metadata before publishing namespace reachability, and flushes according to the storage contract. Removal clears live references before returning blocks to free space; link counts and directory entries must be reconciled. Interrupted operations can still leak blocks or leave incomplete directory relationships; ordering alone cannot provide all-or-nothing transactions. Never advertise crash-atomic relocation solely on the basis of successful ordinary writes. A proprietary recovery extension must not be presented as native ext2 metadata.
+A conservative allocation sequence reserves blocks before making live pointers refer to them, initializes content and metadata before publishing namespace reachability, and flushes according to the storage contract. Removal clears live references before returning blocks to free space; link counts and directory entries must be reconciled. Interrupted operations can leak blocks or leave incomplete directory relationships; ordering alone cannot provide all-or-nothing transactions. A proprietary recovery extension must not be presented as native ext2 metadata.
 
 ## Relocation and filesystem checking
 
-To move an allocated data block, establish exclusive ownership and a clean image, reserve a destination, copy and verify the payload, durably publish the exact inode or indirect pointer, and retire the source only after the new reference is safe. Moving indirect blocks requires updating their owning parent pointer. Reconcile counters and preserve timestamps, permissions and hard-link identities as appropriate. A crash between these steps may require a full consistency check; test every boundary on disposable copies. The native checker can resolve some disagreements by reconnecting or clearing damaged objects; those decisions are not a blanket authorization to modify the original evidence.
+Apply the non-journalled ordering above to relocation: establish exclusive ownership and a clean image, reserve a destination, copy and verify the payload, durably publish the exact inode or indirect pointer, and retire the source only after the new reference is safe. Moving indirect blocks requires updating their owning parent pointer. Reconcile counters and preserve timestamps, permissions and hard-link identities as appropriate. Test each interruption boundary on disposable copies; ordinary successful writes do not establish crash-atomic relocation. The native checker can resolve some disagreements by reconnecting or clearing damaged objects, but those decisions are not a blanket authorization to modify original evidence.
 
 ## Implementation and qualification boundary
 

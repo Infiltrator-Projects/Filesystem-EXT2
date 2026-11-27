@@ -45,24 +45,23 @@ endobj
 << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> /Contents 9 0 R >>
 endobj
 9 0 obj
-<< /Length 1838 >>
+<< /Length 1689 >>
 stream
 0.06 0.15 0.23 rg 0 768 595 74 re f
 1 1 1 rg BT /F2 10 Tf 43 811 Td (INFILTRATOR / FILESYSTEM ENGINEERING) Tj ET
 BT /F2 22 Tf 43 784 Td (EXT2 - technical reference) Tj ET
 0.08 0.14 0.20 rg BT /F2 15 Tf 43 736 Td (1. Original format and scope) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 706 Td (Second Extended Filesystem was developed for Linux by Remy Card, Theodore Ts'o and) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 692 Td (Stephen Tweedie and appeared in 1993. Its block groups combine local allocation) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 678 Td (bitmaps and inode tables with shared superblock geometry. This reference uses the) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 664 Td (historical Linux v2.6.32 ext2 definitions rather than silently adopting) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 650 Td (contemporary ext4 fields. Ext2 has no native transaction journal. A filesystem) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 636 Td (carrying a journal or pending recovery must be classified by actual features, not) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 622 Td (by the label supplied to the probe. Ordinary allocation, file mapping and directory) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 608 Td (semantics are related to ext3 but their interruption guarantees differ.) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 584 Td (Linux initially used MINIX and the first extended filesystem. Ext2's January 1993) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 570 Td (release and block-group locality improved allocation and Unix-style metadata at the) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 556 Td (cost of full consistency scans after unclean shutdown. Low write amplification is) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 542 Td (not crash resilience.) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 706 Td (Linux initially used MINIX and the first extended filesystem. Second Extended) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 692 Td (Filesystem \(ext2\), developed by Remy Card, Theodore Ts'o and Stephen Tweedie,) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 678 Td (appeared in January 1993. Its block groups combine local allocation bitmaps and) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 664 Td (inode tables with shared superblock geometry, improving allocation locality and) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 650 Td (Unix-style metadata. This reference uses Linux v2.6.32 ext2 definitions rather) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 636 Td (than contemporary ext4 fields.) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 612 Td (Ext2 has no native transaction journal: low write amplification is not crash) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 598 Td (resilience, and unclean shutdown may require a full consistency scan. A volume) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 584 Td (carrying a journal or pending recovery must be classified by its actual feature) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 570 Td (flags, not its supplied label. Ext3 shares ordinary allocation, mapping and) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 556 Td (directory semantics but adds different interruption guarantees.) Tj ET
 0.2 0.3 0.4 rg BT /F1 9 Tf 43 32 Td (Historical development and engineering reference | 2) Tj ET
 endstream
 endobj
@@ -280,21 +279,20 @@ endobj
 << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> /Contents 29 0 R >>
 endobj
 29 0 obj
-<< /Length 1485 >>
+<< /Length 1308 >>
 stream
 0.06 0.15 0.23 rg 0 768 595 74 re f
 1 1 1 rg BT /F2 10 Tf 43 811 Td (INFILTRATOR / FILESYSTEM ENGINEERING) Tj ET
 BT /F2 22 Tf 43 784 Td (EXT2 - technical reference) Tj ET
 0.08 0.14 0.20 rg BT /F2 15 Tf 43 736 Td (11. Non-journalled update ordering) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 706 Td (Ext2 has no native commit log. A conservative allocation sequence reserves blocks) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 692 Td (before making live pointers refer to them, initializes content and metadata before) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 678 Td (publishing namespace reachability, and flushes according to the storage contract.) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 664 Td (Removal clears live references before returning blocks to free space; link counts) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 650 Td (and directory entries must be reconciled. Interrupted operations can still leak) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 636 Td (blocks or leave incomplete directory relationships; ordering alone cannot provide) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 622 Td (all-or-nothing transactions. Never advertise crash-atomic relocation solely on the) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 608 Td (basis of successful ordinary writes. A proprietary recovery extension must not be) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 594 Td (presented as native ext2 metadata.) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 706 Td (A conservative allocation sequence reserves blocks before making live pointers) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 692 Td (refer to them, initializes content and metadata before publishing namespace) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 678 Td (reachability, and flushes according to the storage contract. Removal clears) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 664 Td (live references before returning blocks to free space; link counts and) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 650 Td (directory entries must be reconciled. Interrupted operations can leak blocks or) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 636 Td (leave incomplete directory relationships; ordering alone cannot provide) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 622 Td (all-or-nothing transactions. A proprietary recovery extension must not be) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 608 Td (presented as native ext2 metadata.) Tj ET
 0.2 0.3 0.4 rg BT /F1 9 Tf 43 32 Td (Historical development and engineering reference | 12) Tj ET
 endstream
 endobj
@@ -302,21 +300,22 @@ endobj
 << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> /Contents 31 0 R >>
 endobj
 31 0 obj
-<< /Length 1496 >>
+<< /Length 1582 >>
 stream
 0.06 0.15 0.23 rg 0 768 595 74 re f
 1 1 1 rg BT /F2 10 Tf 43 811 Td (INFILTRATOR / FILESYSTEM ENGINEERING) Tj ET
 BT /F2 22 Tf 43 784 Td (EXT2 - technical reference) Tj ET
 0.08 0.14 0.20 rg BT /F2 15 Tf 43 736 Td (12. Relocation and filesystem checking) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 706 Td (To move an allocated data block, establish exclusive ownership and a clean image,) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 692 Td (reserve a destination, copy and verify the payload, durably publish the exact inode) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 678 Td (or indirect pointer, and retire the source only after the new reference is safe.) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 664 Td (Moving indirect blocks requires updating their owning parent pointer. Reconcile) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 650 Td (counters and preserve timestamps, permissions and hard-link identities as) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 636 Td (appropriate. A crash between these steps may require a full consistency check; test) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 622 Td (every boundary on disposable copies. The native checker can resolve some) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 608 Td (disagreements by reconnecting or clearing damaged objects; those decisions are not) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 594 Td (a blanket authorization to modify the original evidence.) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 706 Td (Apply the non-journalled ordering above to relocation: establish exclusive) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 692 Td (ownership and a clean image, reserve a destination, copy and verify the) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 678 Td (payload, durably publish the exact inode or indirect pointer, and retire the) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 664 Td (source only after the new reference is safe. Moving indirect blocks requires) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 650 Td (updating their owning parent pointer. Reconcile counters and preserve) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 636 Td (timestamps, permissions and hard-link identities as appropriate. Test each) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 622 Td (interruption boundary on disposable copies; ordinary successful writes do not) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 608 Td (establish crash-atomic relocation. The native checker can resolve some) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 594 Td (disagreements by reconnecting or clearing damaged objects, but those decisions) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 580 Td (are not a blanket authorization to modify original evidence.) Tj ET
 0.2 0.3 0.4 rg BT /F1 9 Tf 43 32 Td (Historical development and engineering reference | 13) Tj ET
 endstream
 endobj
@@ -381,34 +380,34 @@ xref
 0000000572 00000 n 
 0000002184 00000 n 
 0000002330 00000 n 
-0000004219 00000 n 
-0000004367 00000 n 
-0000006076 00000 n 
-0000006224 00000 n 
-0000008023 00000 n 
-0000008171 00000 n 
-0000009992 00000 n 
-0000010140 00000 n 
-0000011689 00000 n 
-0000011837 00000 n 
-0000013611 00000 n 
-0000013759 00000 n 
-0000015441 00000 n 
-0000015589 00000 n 
-0000017369 00000 n 
-0000017517 00000 n 
-0000019223 00000 n 
-0000019371 00000 n 
-0000021054 00000 n 
-0000021202 00000 n 
-0000022739 00000 n 
-0000022887 00000 n 
-0000024435 00000 n 
-0000024583 00000 n 
-0000026774 00000 n 
-0000026922 00000 n 
+0000004070 00000 n 
+0000004218 00000 n 
+0000005927 00000 n 
+0000006075 00000 n 
+0000007874 00000 n 
+0000008022 00000 n 
+0000009843 00000 n 
+0000009991 00000 n 
+0000011540 00000 n 
+0000011688 00000 n 
+0000013462 00000 n 
+0000013610 00000 n 
+0000015292 00000 n 
+0000015440 00000 n 
+0000017220 00000 n 
+0000017368 00000 n 
+0000019074 00000 n 
+0000019222 00000 n 
+0000020905 00000 n 
+0000021053 00000 n 
+0000022413 00000 n 
+0000022561 00000 n 
+0000024195 00000 n 
+0000024343 00000 n 
+0000026534 00000 n 
+0000026682 00000 n 
 trailer
 << /Size 36 /Root 1 0 R >>
 startxref
-28272
+28032
 %%EOF
