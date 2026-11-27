@@ -4,6 +4,8 @@
 
 Second Extended Filesystem was developed for Linux by Remy Card, Theodore Ts'o and Stephen Tweedie and appeared in 1993. Its block groups combine local allocation bitmaps and inode tables with shared superblock geometry. This reference uses the historical Linux v2.6.32 ext2 definitions rather than silently adopting contemporary ext4 fields. Ext2 has no native transaction journal. A filesystem carrying a journal or pending recovery must be classified by actual features, not by the label supplied to the probe. Ordinary allocation, file mapping and directory semantics are related to ext3 but their interruption guarantees differ.
 
+Linux initially used MINIX and the first extended filesystem. Ext2's January 1993 release and block-group locality improved allocation and Unix-style metadata at the cost of full consistency scans after unclean shutdown. Low write amplification is not crash resilience.
+
 ## Superblock geometry and field inventory
 
 All ordinary ext2/ext3 metadata integers are little-endian. The primary superblock is 1024 bytes long at partition-relative byte 1024, regardless of block size. Relative 32-bit fields: inode count 0, block count 4, reserved blocks 8, free blocks 12, free inodes 16, first data block 20, log block size 24, log fragment size 28, blocks per group 32, fragments per group 36, inodes per group 40, mount time 44, write time 48. Mount counts at 52/54 and magic 0xEF53 at 56 are 16-bit. State 58, errors policy 60, minor revision 62, last check 64, check interval 68, creator OS 72, revision 76, reserve UID/GID 80/82. Block bytes B=1024 shifted left by the validated log block size. First data block is ordinarily 1 for 1024-byte blocks and 0 for larger blocks. Check total geometry against the supplied device.
@@ -48,8 +50,14 @@ Ext2 has no native commit log. A conservative allocation sequence reserves block
 
 To move an allocated data block, establish exclusive ownership and a clean image, reserve a destination, copy and verify the payload, durably publish the exact inode or indirect pointer, and retire the source only after the new reference is safe. Moving indirect blocks requires updating their owning parent pointer. Reconcile counters and preserve timestamps, permissions and hard-link identities as appropriate. A crash between these steps may require a full consistency check; test every boundary on disposable copies. The native checker can resolve some disagreements by reconnecting or clearing damaged objects; those decisions are not a blanket authorization to modify the original evidence.
 
+## Implementation and qualification boundary
+
+At historical source revision 09beddd958e7 the hosted descriptor included read, write, CREATE and format, guarded by exclusive host access. A CREATE callback does not establish crash-atomic repair or relocation. Historical workflow 45534075017 records a specific tested scope.
+
+Common V2 is the independent provider interface: https://github.com/Infiltrator-Projects/Libraries/blob/main/docs/FILESYSTEM_COMMON_ABI_V2.md . Negotiate real operation masks and media profiles. Use bounded host I/O, exclusive unmounted ownership and durable flush for mutation; distinguish unsupported, corrupt, I/O and stale-handle results. Test Media and Defragmenter use the same engine. Hosted, freestanding, BOOT, kernel, recovery and package qualification are independent. Current capability and release status belongs to the repository README and exact-source qualification records; historical evidence is not a current status claim.
+
+Historical source or test reference: https://github.com/Infiltrator-Projects/Filesystem-EXT2/actions/runs/45534075017 .
+
 ## Sources and outstanding qualification
 
-Pinned source: https://github.com/torvalds/linux/blob/v2.6.32/include/linux/ext2_fs.h ; algorithms in https://github.com/torvalds/linux/tree/v2.6.32/fs/ext2 . Independent utilities: https://github.com/tytso/e2fsprogs . Cross-check authentic revision-zero and dynamic images, EA variants, legacy indexed directories and sparse pointers. Exact META_BG layout, optional OS-specific fields and HTree algorithms need dedicated tests. The following original manual is retained as a historical appendix, including its dated provider statements. This reference documents native format semantics, not the current Common V2 implementation or release qualification.
-
-The PDF preserves the earlier manual as a historical appendix.
+Pinned source: https://github.com/torvalds/linux/blob/v2.6.32/include/linux/ext2_fs.h ; algorithms in https://github.com/torvalds/linux/tree/v2.6.32/fs/ext2 . Independent utilities: https://github.com/tytso/e2fsprogs . Cross-check authentic revision-zero and dynamic images, EA variants, legacy indexed directories and sparse pointers. Exact META_BG layout, optional OS-specific fields and HTree algorithms need dedicated tests.  This reference documents native format semantics, not the current Common V2 implementation or release qualification.
